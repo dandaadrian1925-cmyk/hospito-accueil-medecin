@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BedDouble } from 'lucide-react';
 import { listenServices, listenLits } from '../../services/litsService';
+import { useAuth } from '../../context/AuthContext';
 import StatusBadge from '../../components/common/StatusBadge';
 import EmptyState from '../../components/common/EmptyState';
 import Loader from '../../components/common/Loader';
@@ -9,11 +10,12 @@ const TONE_STATUT = { libre: 'green', occupe: 'red', maintenance: 'amber', reser
 const LABEL_STATUT = { libre: 'Libre', occupe: 'Occupé', maintenance: 'Maintenance', reserve: 'Réservé' };
 
 export default function LitsPage() {
+  const { etablissementId } = useAuth();
   const [services, setServices] = useState(null);
   const [lits, setLits] = useState(null);
 
-  useEffect(() => listenServices(setServices), []);
-  useEffect(() => listenLits(setLits), []);
+  useEffect(() => listenServices(etablissementId, setServices), [etablissementId]);
+  useEffect(() => listenLits(etablissementId, setLits), [etablissementId]);
 
   if (services === null || lits === null) return <Loader label="Chargement des lits…" />;
 

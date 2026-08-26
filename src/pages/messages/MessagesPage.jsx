@@ -7,7 +7,7 @@ import Loader from '../../components/common/Loader';
 import { Button } from '../../components/ui/button';
 
 export default function MessagesPage() {
-  const { user } = useAuth();
+  const { user, etablissementId } = useAuth();
   const [contacts, setContacts] = useState(null);
   const [selected, setSelected] = useState(null);
   const [conversationId, setConversationId] = useState(null);
@@ -16,7 +16,7 @@ export default function MessagesPage() {
   const [sending, setSending] = useState(false);
   const bottomRef = useRef(null);
 
-  useEffect(() => { getStaffContacts().then(setContacts); }, []);
+  useEffect(() => { if (etablissementId) getStaffContacts(etablissementId).then(setContacts); }, [etablissementId]);
 
   useEffect(() => {
     if (!selected) return;

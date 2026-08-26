@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { buildAuditLogsQuery } from '../../services/auditService';
 import { useFirestorePagination } from '../../hooks/useFirestorePagination';
+import { useAuth } from '../../context/AuthContext';
 import DataTable from '../../components/common/DataTable';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
 
@@ -13,10 +14,9 @@ const ACTION_LABELS = {
 };
 
 export default function AuditLogPage() {
-  const [connexionsSeules, setConnexionsSeules] = useState(false);
+  const { etablissementId } = useAuth();
   const [{ debut, fin }, setDateRange] = useState({ debut: null, fin: null });
-  const paginated = useFirestorePagination(() => buildAuditLogsQuery({ debut, fin }), [debut, fin]);
-  const rows = connexionsSeules ? paginated.rows.filter((l) => l.action === 'auth.connexion') : paginated.rows;
+  const paginated = useFirestorePagination(() => buildAuditLogsQuery(etablissementId, { debut, fin }), [etablissementId, debut, fin]);
 
   const columns = [
     { key: 'createdAt', label: 'Date', render: (l) => l.createdAt?.toDate ? l.createdAt.toDate().toLocaleString('fr-FR') : '—' },
@@ -36,15 +36,9 @@ export default function AuditLogPage() {
         <p className="text-muted-foreground mt-1">Historique des actions effectuées à l'accueil.</p>
       </div>
 
-      <div className="flex items-end gap-4 flex-wrap">
-        <label className="flex items-center gap-2 text-sm text-foreground w-fit cursor-pointer pb-2.5">
-          <input type="checkbox" checked={connexionsSeules} onChange={(e) => setConnexionsSeules(e.target.checked)} />
-          Connexions uniquement
-        </label>
-        <DateRangeFilter debut={debut} fin={fin} onChange={setDateRange} />
-      </div>
+      <DateRangeFilter debut={debut} fin={fin} onChange={setDateRange} />
 
-      <DataTable columns={columns} rows={rows} loading={paginated.loading} emptyTitle="Aucune action enregistrée" pagination={paginated} />
+      <DataTable columns={columns} rows={paginated.rows} loading={paginated.loading} emptyTitle="Aucune action enregistrée" pagination={paginated} />
     </div>
   );
 }

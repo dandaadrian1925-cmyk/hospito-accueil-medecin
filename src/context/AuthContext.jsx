@@ -1,67 +1,79 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  collection, doc, onSnapshot, query, where, updateDoc, serverTimestamp,
+} from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { auth, db } from '../firebase/config';
 import { initPush } from '../services/pushNotificationsService';
 import { ALLOWED_ROLES } from '../lib/permissions';
 
 const HEARTBEAT_MS = 60000;
+const STORAGE_KEY = 'hospito-accueil-medecin:etablissementId';
 
 const AuthContext = createContext(null);
 
+// Un agent d'accueil pourrait en théorie exercer dans plusieurs établissements
+// — même modèle d'affiliations que les autres apps du SGIH (cf. mémoire).
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [userProfile, setUserProfile] = useState(null);
+  const [baseProfile, setBaseProfile] = useState(null);
+  const [affiliations, setAffiliations] = useState(null);
+  const [etablissementId, setEtablissementIdState] = useState(() => localStorage.getItem(STORAGE_KEY) || null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let unsubProfile = null;
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
-      if (unsubProfile) { unsubProfile(); unsubProfile = null; }
-
+      setUser(firebaseUser);
       if (!firebaseUser) {
-        setUser(null);
-        setUserProfile(null);
+        setBaseProfile(null);
+        setAffiliations(null);
         setLoading(false);
+      }
+    });
+    return unsubscribeAuth;
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    return onSnapshot(doc(db, 'users', user.uid), (snap) => {
+      setBaseProfile(snap.exists() ? snap.data() : null);
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    setLoading(true);
+    const q = query(collection(db, 'affiliations'), where('userId', '==', user.uid), where('role', 'in', ALLOWED_ROLES));
+    const unsub = onSnapshot(q, (snap) => {
+      const actives = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((a) => a.actif);
+
+      if (actives.length === 0) {
+        toast.error("Accès non autorisé à l'espace accueil");
+        setAffiliations([]);
+        setLoading(false);
+        signOut(auth);
         return;
       }
 
-      unsubProfile = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap) => {
-        if (docSnap.metadata.fromCache && !docSnap.exists()) return;
-
-        const profile = docSnap.exists() ? docSnap.data() : null;
-
-        if (profile?.banni) {
-          toast.error('Ce compte a été suspendu.');
-          setUser(null);
-          setUserProfile(null);
-          setLoading(false);
-          signOut(auth);
-          return;
-        }
-
-        if (!profile || !ALLOWED_ROLES.includes(profile.role)) {
-          toast.error("Accès non autorisé à l'espace accueil");
-          setUser(null);
-          setUserProfile(null);
-          setLoading(false);
-          signOut(auth);
-          return;
-        }
-
-        setUser(firebaseUser);
-        setUserProfile(profile);
-        setLoading(false);
-      }, (e) => {
-        console.error('Écoute du profil accueil échouée :', e);
-        setUser(firebaseUser);
-        setUserProfile(null);
-        setLoading(false);
+      setAffiliations(actives);
+      setLoading(false);
+      setEtablissementIdState((prev) => {
+        if (prev && actives.some((a) => a.etablissementId === prev)) return prev;
+        return actives[0].etablissementId;
       });
+    }, (e) => {
+      console.error('Écoute des affiliations échouée :', e);
+      setAffiliations([]);
+      setLoading(false);
     });
-    return () => { unsubscribeAuth(); if (unsubProfile) unsubProfile(); };
-  }, []);
+    return unsub;
+  }, [user]);
+
+  const setEtablissementId = (id) => {
+    localStorage.setItem(STORAGE_KEY, id);
+    setEtablissementIdState(id);
+  };
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -75,10 +87,17 @@ export const AuthProvider = ({ children }) => {
     if (user?.uid) initPush(user.uid);
   }, [user?.uid]);
 
-  const isStaff = !!userProfile && ALLOWED_ROLES.includes(userProfile.role);
+  const activeAffiliation = affiliations?.find((a) => a.etablissementId === etablissementId) || null;
+  const userProfile = (baseProfile && activeAffiliation)
+    ? { ...baseProfile, ...activeAffiliation, uid: user.uid }
+    : null;
+  const isStaff = !!userProfile;
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, isStaff, loading }}>
+    <AuthContext.Provider value={{
+      user, userProfile, isStaff, loading,
+      etablissementId, affiliations: affiliations || [], setEtablissementId,
+    }}>
       {children}
     </AuthContext.Provider>
   );

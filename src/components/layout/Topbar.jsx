@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Bell } from 'lucide-react';
+import { Menu, Bell, Building2 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select';
 import { useAuth } from '../../context/AuthContext';
 import { listenUnreadCount } from '../../services/notificationsService';
 
@@ -12,7 +13,7 @@ function getInitiales(userProfile) {
 }
 
 export default function Topbar({ title, onOpenMobile }) {
-  const { user, userProfile } = useAuth();
+  const { user, userProfile, etablissementId, affiliations, setEtablissementId } = useAuth();
   const navigate = useNavigate();
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -28,6 +29,20 @@ export default function Topbar({ title, onOpenMobile }) {
       </Button>
 
       <h1 className="font-display text-lg font-bold text-foreground">{title}</h1>
+
+      {affiliations.length > 1 && (
+        <Select value={etablissementId || ''} onValueChange={setEtablissementId}>
+          <SelectTrigger className="h-8 w-[180px] text-xs ml-2">
+            <Building2 size={13} className="mr-1.5 flex-shrink-0" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {affiliations.map((a) => (
+              <SelectItem key={a.etablissementId} value={a.etablissementId}>{a.etablissementNom || a.etablissementId}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       <div className="flex-1" />
 

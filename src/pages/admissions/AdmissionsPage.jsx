@@ -18,9 +18,9 @@ const TONE_STATUT = { pre_admission: 'amber', admis: 'green', sorti: 'gray', tra
 const LABEL_STATUT = { pre_admission: 'Pré-admission', admis: 'Admis', sorti: 'Sorti', transfere: 'Transféré' };
 
 export default function AdmissionsPage() {
-  const { user } = useAuth();
+  const { user, etablissementId } = useAuth();
   const actor = { uid: user.uid, email: user.email };
-  const pagination = useFirestorePagination(buildAdmissionsQuery, []);
+  const pagination = useFirestorePagination(() => buildAdmissionsQuery(etablissementId), [etablissementId]);
 
   const [patients, setPatients] = useState([]);
   const [dialogOuvert, setDialogOuvert] = useState(false);
@@ -28,15 +28,16 @@ export default function AdmissionsPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    getDocs(buildPatientsQuery()).then((snap) => setPatients(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
-  }, []);
+    if (!etablissementId) return;
+    getDocs(buildPatientsQuery(etablissementId)).then((snap) => setPatients(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+  }, [etablissementId]);
 
   const admettre = async () => {
     const patient = patients.find((p) => p.id === form.patientId);
     if (!patient) { toast.error('Sélectionnez un patient'); return; }
     setSaving(true);
     try {
-      await creerAdmission({ ...form, patientNom: `${patient.prenom} ${patient.nom}` }, actor);
+      await creerAdmission({ ...form, patientNom: `${patient.prenom} ${patient.nom}` }, etablissementId, actor);
       toast.success('Admission créée');
       setDialogOuvert(false);
       setForm({ patientId: '', service: '', dateSortiePrevue: '' });
@@ -50,7 +51,7 @@ export default function AdmissionsPage() {
 
   const changerStatut = async (admission, statut) => {
     try {
-      await changerStatutAdmission(admission.id, statut, actor);
+      await changerStatutAdmission(admission.id, statut, etablissementId, actor);
       pagination.refresh();
     } catch (e) {
       toast.error(e.message || 'Erreur');

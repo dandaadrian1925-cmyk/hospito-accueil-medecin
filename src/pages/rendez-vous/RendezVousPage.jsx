@@ -18,9 +18,9 @@ const TONE_STATUT = { planifie: 'amber', confirme: 'blue', annule: 'red', termin
 const LABEL_STATUT = { planifie: 'Planifié', confirme: 'Confirmé', annule: 'Annulé', termine: 'Terminé' };
 
 export default function RendezVousPage() {
-  const { user } = useAuth();
+  const { user, etablissementId } = useAuth();
   const actor = { uid: user.uid, email: user.email };
-  const pagination = useFirestorePagination(buildRendezVousQuery, []);
+  const pagination = useFirestorePagination(() => buildRendezVousQuery(etablissementId), [etablissementId]);
 
   const [patients, setPatients] = useState([]);
   const [dialogOuvert, setDialogOuvert] = useState(false);
@@ -28,15 +28,16 @@ export default function RendezVousPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    getDocs(buildPatientsQuery()).then((snap) => setPatients(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
-  }, []);
+    if (!etablissementId) return;
+    getDocs(buildPatientsQuery(etablissementId)).then((snap) => setPatients(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+  }, [etablissementId]);
 
   const creer = async () => {
     const patient = patients.find((p) => p.id === form.patientId);
     if (!patient || !form.dateHeure) { toast.error('Patient et date/heure requis'); return; }
     setSaving(true);
     try {
-      await creerRendezVous({ ...form, patientNom: `${patient.prenom} ${patient.nom}` }, actor);
+      await creerRendezVous({ ...form, patientNom: `${patient.prenom} ${patient.nom}` }, etablissementId, actor);
       toast.success('Rendez-vous créé');
       setDialogOuvert(false);
       setForm({ patientId: '', service: '', dateHeure: '', motif: '' });
@@ -50,7 +51,7 @@ export default function RendezVousPage() {
 
   const changerStatut = async (rdv, statut) => {
     try {
-      await changerStatutRendezVous(rdv.id, statut, actor);
+      await changerStatutRendezVous(rdv.id, statut, etablissementId, actor);
       pagination.refresh();
     } catch (e) {
       toast.error(e.message || 'Erreur');

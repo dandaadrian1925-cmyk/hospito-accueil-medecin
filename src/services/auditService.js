@@ -1,12 +1,13 @@
-import { addDoc, collection, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, query, where, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { clausesPlageDate } from '../lib/dateFilters';
 
-export const logAction = async ({ actor, action, targetType, targetId, details }) => {
+export const logAction = async ({ actor, action, etablissementId, targetType, targetId, details }) => {
   try {
     await addDoc(collection(db, 'audit_logs'), {
       adminUid: actor?.uid || null,
       adminEmail: actor?.email || null,
+      etablissementId: etablissementId ?? null,
       action,
       targetType: targetType ?? null,
       targetId: targetId ?? null,
@@ -18,5 +19,10 @@ export const logAction = async ({ actor, action, targetType, targetId, details }
   }
 };
 
-export const buildAuditLogsQuery = (filters = {}) =>
-  query(collection(db, 'audit_logs'), ...clausesPlageDate('createdAt', filters.debut, filters.fin), orderBy('createdAt', 'desc'));
+export const buildAuditLogsQuery = (etablissementId, filters = {}) =>
+  query(
+    collection(db, 'audit_logs'),
+    where('etablissementId', '==', etablissementId),
+    ...clausesPlageDate('createdAt', filters.debut, filters.fin),
+    orderBy('createdAt', 'desc'),
+  );
