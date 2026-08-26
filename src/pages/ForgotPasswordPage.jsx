@@ -46,9 +46,9 @@ export default function ForgotPasswordPage() {
         className="relative z-10 w-full max-w-md px-6"
       >
         <div className="text-center mb-10">
-          <h1 className="font-display text-4xl font-bold text-foreground mb-3" style={{ textShadow: '0 1px 12px hsl(0 0% 100% / 0.4)' }}>MAKET Livreur</h1>
+          <h1 className="font-display text-4xl font-bold text-foreground mb-3" style={{ textShadow: '0 1px 12px hsl(0 0% 100% / 0.4)' }}>Hospito Accueil</h1>
           <p className="text-foreground/80 text-base max-w-sm mx-auto font-medium">
-            Espace réservé aux livreurs partenaires MAKET.
+            Espace réservé au personnel d'accueil.
           </p>
         </div>
 
@@ -64,7 +64,7 @@ export default function ForgotPasswordPage() {
               </div>
               <h2 className="font-display text-xl font-bold mb-2">Email envoyé !</h2>
               <p className="text-sm text-muted-foreground leading-relaxed mb-6">
-                Si un compte livreur existe pour <strong className="text-foreground">{email}</strong>, un lien de réinitialisation vient d'être envoyé. Vérifiez aussi vos spams.
+                Si un compte accueil existe pour <strong className="text-foreground">{email}</strong>, un lien de réinitialisation vient d'être envoyé. Vérifiez aussi vos spams.
               </p>
               <Button asChild className="w-full">
                 <Link to="/login">Retour à la connexion</Link>
@@ -81,7 +81,7 @@ export default function ForgotPasswordPage() {
                   <Input
                     id="email" type="email" required autoFocus value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="livreur@maket.com"
+                    placeholder="prenom.nom@hospito.com"
                   />
                 </div>
 

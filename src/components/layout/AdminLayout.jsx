@@ -4,21 +4,20 @@ import { AnimatePresence, motion } from 'framer-motion';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import OfflineBanner from '../common/OfflineBanner';
+import { HOSPITAL_MODULES } from '../../lib/hospitalModules';
+
+const TITLES = [
+  ...HOSPITAL_MODULES.map((m) => ({ prefix: `/${m.path}`, label: m.label })),
+  { prefix: '/messages', label: 'Communication interne' },
+  { prefix: '/notifications', label: 'Notifications' },
+  { prefix: '/audit', label: "Journal d'audit" },
+  { prefix: '/profil', label: 'Profil' },
+];
 
 function titleFor(pathname) {
-  if (pathname === '/') return 'Mes livraisons';
-  if (pathname.startsWith('/commandes')) return 'Détail livraison';
-  if (pathname.startsWith('/opportunites')) return 'Opportunités';
-  if (pathname.startsWith('/wallet')) return 'Mon wallet';
-  if (pathname.startsWith('/gains')) return 'Mes gains';
-  if (pathname.startsWith('/tournee')) return 'Ma tournée';
-  if (pathname.startsWith('/retours')) return 'Retours à effectuer';
-  if (pathname.startsWith('/profil')) return 'Mon profil';
-  if (pathname.startsWith('/chat')) return 'Messages';
-  if (pathname.startsWith('/notifications')) return 'Notifications';
-  if (pathname.startsWith('/verification-cni')) return 'Vérification CNI';
-  if (pathname.startsWith('/aide')) return 'Aide';
-  return 'MAKET Livreur';
+  if (pathname === '/') return 'Tableau de bord';
+  const match = TITLES.find((t) => pathname.startsWith(t.prefix));
+  return match?.label || 'Hospito Accueil';
 }
 
 export default function AdminLayout() {

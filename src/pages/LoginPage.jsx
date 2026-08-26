@@ -44,15 +44,15 @@ export default function LoginPage() {
         className="relative z-10 w-full max-w-md px-6"
       >
         <div className="text-center mb-10">
-          <h1 className="font-display text-4xl font-bold text-foreground mb-3" style={{ textShadow: '0 1px 12px hsl(0 0% 100% / 0.4)' }}>MAKET Livreur</h1>
+          <h1 className="font-display text-4xl font-bold text-foreground mb-3" style={{ textShadow: '0 1px 12px hsl(0 0% 100% / 0.4)' }}>Hospito Accueil</h1>
           <p className="text-foreground/80 text-base max-w-sm mx-auto font-medium">
-            Espace réservé aux livreurs partenaires MAKET.
+            Espace réservé au personnel d'accueil.
           </p>
         </div>
 
         <div className="bg-white/95 backdrop-blur rounded-2xl p-10 shadow-2xl">
           <h2 className="font-display text-2xl font-bold text-center mb-2">Connexion</h2>
-          <p className="text-muted-foreground text-center mb-8 text-sm">Connectez-vous avec le compte fourni par MAKET.</p>
+          <p className="text-muted-foreground text-center mb-8 text-sm">Connectez-vous avec votre compte accueil.</p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
@@ -60,7 +60,7 @@ export default function LoginPage() {
               <Input
                 id="email" type="email" required value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="livreur@maket.com"
+                placeholder="prenom.nom@hospito.com"
               />
             </div>
 

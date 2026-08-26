@@ -4,27 +4,24 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AdminLayout from './components/layout/AdminLayout';
 import Loader from './components/common/Loader';
+import { HOSPITAL_MODULES } from './lib/hospitalModules';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
-const CommandeDetailPage = lazy(() => import('./pages/commandes/CommandeDetailPage'));
-const OpportunitesPage = lazy(() => import('./pages/OpportunitesPage'));
-const WalletPage = lazy(() => import('./pages/WalletPage'));
-const ProfilPage = lazy(() => import('./pages/ProfilPage'));
-const GainsPage = lazy(() => import('./pages/GainsPage'));
-const TourneePage = lazy(() => import('./pages/TourneePage'));
-const RetoursPage = lazy(() => import('./pages/RetoursPage'));
-const RetourDetailPage = lazy(() => import('./pages/RetourDetailPage'));
-const ChatPage = lazy(() => import('./pages/ChatPage'));
+const ModulePrevu = lazy(() => import('./pages/ModulePrevu'));
+const AdmissionsPage = lazy(() => import('./pages/admissions/AdmissionsPage'));
+const RendezVousPage = lazy(() => import('./pages/rendez-vous/RendezVousPage'));
+const LitsPage = lazy(() => import('./pages/lits/LitsPage'));
+const AuditLogPage = lazy(() => import('./pages/audit/AuditLogPage'));
+const MessagesPage = lazy(() => import('./pages/messages/MessagesPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
-const VerifCNIPage = lazy(() => import('./pages/VerifCNIPage'));
-const ContactPage = lazy(() => import('./pages/ContactPage'));
+const ProfilPage = lazy(() => import('./pages/profil/ProfilPage'));
 
 function ProtectedRoute({ children }) {
-  const { user, isLivreur, loading } = useAuth();
+  const { user, isStaff, loading } = useAuth();
   if (loading) return <Loader label="Vérification de l'accès…" />;
-  if (!user || !isLivreur) return <Navigate to="/login" replace />;
+  if (!user || !isStaff) return <Navigate to="/login" replace />;
   return children;
 }
 
@@ -54,19 +51,18 @@ export default function App() {
 
             <Route path="/" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
               <Route index element={<DashboardPage />} />
-              <Route path="commandes/:id" element={<CommandeDetailPage />} />
-              <Route path="opportunites" element={<OpportunitesPage />} />
-              <Route path="wallet" element={<WalletPage />} />
-              <Route path="gains" element={<GainsPage />} />
-              <Route path="tournee" element={<TourneePage />} />
-              <Route path="retours" element={<RetoursPage />} />
-              <Route path="retours/:id" element={<RetourDetailPage />} />
-              <Route path="profil" element={<ProfilPage />} />
-              <Route path="verification-cni" element={<VerifCNIPage />} />
-              <Route path="aide" element={<ContactPage />} />
-              <Route path="chat" element={<ChatPage />} />
-              <Route path="chat/:convId" element={<ChatPage />} />
+
+              <Route path="admissions" element={<AdmissionsPage />} />
+              <Route path="rendez-vous" element={<RendezVousPage />} />
+              <Route path="lits" element={<LitsPage />} />
+              {HOSPITAL_MODULES.filter((m) => !['admissions', 'rendez-vous', 'lits'].includes(m.path)).map((m) => (
+                <Route key={m.path} path={m.path} element={<ModulePrevu titre={m.label} phase={m.phase} />} />
+              ))}
+
+              <Route path="messages" element={<MessagesPage />} />
               <Route path="notifications" element={<NotificationsPage />} />
+              <Route path="audit" element={<AuditLogPage />} />
+              <Route path="profil" element={<ProfilPage />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />
