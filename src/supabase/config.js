@@ -39,7 +39,7 @@ export const uploadFile = async (bucket, path, file) => {
   const fullPath = `${path}.${ext}`;
 
   const idToken = await auth.currentUser.getIdToken();
-  const res = await fetch(`${supabaseUrl}/functions/v1/secure-upload-url`, {
+  const res = await fetch(`${supabaseUrl}/functions/v1/hospito-secure-upload-url`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -77,7 +77,7 @@ export const deleteFile = async (bucket, path) => {
 // { [path]: signedUrl }.
 export const getCniSignedUrls = async (paths) => {
   const idToken = await auth.currentUser.getIdToken();
-  const res = await fetch(`${supabaseUrl}/functions/v1/get-cni-signed-urls`, {
+  const res = await fetch(`${supabaseUrl}/functions/v1/hospito-get-cni-signed-urls`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -112,7 +112,7 @@ export const resoudreUrlsLivraison = async (commandeId, urls) => {
   if (paths.length === 0) return urls;
   try {
     const idToken = await auth.currentUser.getIdToken();
-    const res = await fetch(`${supabaseUrl}/functions/v1/get-litige-signed-urls`, {
+    const res = await fetch(`${supabaseUrl}/functions/v1/hospito-get-litige-signed-urls`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -140,7 +140,7 @@ export const pousserNotification = async (notificationId) => {
   try {
     if (!auth.currentUser) return;
     const idToken = await auth.currentUser.getIdToken();
-    await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+    await fetch(`${supabaseUrl}/functions/v1/hospito-send-push-notification`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
