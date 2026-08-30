@@ -10,9 +10,9 @@ export const STATUTS_RDV = ['planifie', 'confirme', 'annule', 'termine'];
 export const buildRendezVousQuery = (etablissementId) =>
   query(collection(db, 'rendez_vous'), where('etablissementId', '==', etablissementId), orderBy('dateHeure', 'asc'));
 
-export const creerRendezVous = async ({ patientId, patientNom, service, dateHeure, motif }, etablissementId, actor) => {
+export const creerRendezVous = async ({ patientId, patientNom, serviceId, service, dateHeure, motif }, etablissementId, actor) => {
   const ref = await addDoc(collection(db, 'rendez_vous'), {
-    etablissementId, patientId, patientNom, service: service?.trim() || null,
+    etablissementId, patientId, patientNom, serviceId: serviceId || null, service: service?.trim() || null,
     dateHeure: Timestamp.fromDate(new Date(dateHeure)), motif: motif?.trim() || null,
     statut: 'planifie', createdAt: serverTimestamp(), createdBy: actor?.uid || null,
   });

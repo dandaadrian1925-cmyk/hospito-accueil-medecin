@@ -4,6 +4,7 @@ import { CalendarClock, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import { buildPatientsQuery } from '../../services/patientsService';
+import { listenServices } from '../../services/litsService';
 import { STATUTS_RDV, buildRendezVousQuery, creerRendezVous, changerStatutRendezVous } from '../../services/rendezVousService';
 import { useFirestorePagination } from '../../hooks/useFirestorePagination';
 import DataTable from '../../components/common/DataTable';
@@ -23,8 +24,9 @@ export default function RendezVousPage() {
   const pagination = useFirestorePagination(() => buildRendezVousQuery(etablissementId), [etablissementId]);
 
   const [patients, setPatients] = useState([]);
+  const [services, setServices] = useState([]);
   const [dialogOuvert, setDialogOuvert] = useState(false);
-  const [form, setForm] = useState({ patientId: '', service: '', dateHeure: '', motif: '' });
+  const [form, setForm] = useState({ patientId: '', serviceId: '', dateHeure: '', motif: '' });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -32,15 +34,24 @@ export default function RendezVousPage() {
     getDocs(buildPatientsQuery(etablissementId)).then((snap) => setPatients(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
   }, [etablissementId]);
 
+  useEffect(() => {
+    if (!etablissementId) return;
+    return listenServices(etablissementId, (all) => setServices(all.filter((s) => s.actif)));
+  }, [etablissementId]);
+
   const creer = async () => {
     const patient = patients.find((p) => p.id === form.patientId);
+    const service = services.find((s) => s.id === form.serviceId);
     if (!patient || !form.dateHeure) { toast.error('Patient et date/heure requis'); return; }
     setSaving(true);
     try {
-      await creerRendezVous({ ...form, patientNom: `${patient.prenom} ${patient.nom}` }, etablissementId, actor);
+      await creerRendezVous({
+        patientId: form.patientId, serviceId: form.serviceId || null, service: service?.nom || null,
+        dateHeure: form.dateHeure, motif: form.motif, patientNom: `${patient.prenom} ${patient.nom}`,
+      }, etablissementId, actor);
       toast.success('Rendez-vous créé');
       setDialogOuvert(false);
-      setForm({ patientId: '', service: '', dateHeure: '', motif: '' });
+      setForm({ patientId: '', serviceId: '', dateHeure: '', motif: '' });
       pagination.refresh();
     } catch (e) {
       toast.error(e.message || 'Erreur');
@@ -105,7 +116,12 @@ export default function RendezVousPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Service</Label>
-              <Input value={form.service} onChange={(e) => setForm({ ...form, service: e.target.value })} placeholder="Cardiologie…" />
+              <Select value={form.serviceId} onValueChange={(v) => setForm({ ...form, serviceId: v })}>
+                <SelectTrigger><SelectValue placeholder="Sélectionner un service" /></SelectTrigger>
+                <SelectContent>
+                  {services.map((s) => <SelectItem key={s.id} value={s.id}>{s.nom}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Date et heure</Label>
