@@ -13,7 +13,7 @@ import ConfirmDialog from '../common/ConfirmDialog';
 // fonctionnalité tourne déjà ailleurs.
 const MODULES_DANS_UNE_AUTRE_APP = new Set([
   'personnel', // hospito-super-admin
-  'patients', // hospito-admin
+  'patients', 'facturation', // hospito-admin
   'dossiers', 'prescriptions', 'bloc-operatoire', 'laboratoire-imagerie', 'pharmacie', // hospito-medecin
 ]);
 
