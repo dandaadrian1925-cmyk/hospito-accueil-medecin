@@ -6,9 +6,20 @@ import { auth } from '../../firebase/config';
 import { HOSPITAL_MODULES } from '../../lib/hospitalModules';
 import ConfirmDialog from '../common/ConfirmDialog';
 
+// HOSPITAL_MODULES est une liste partagée (dupliquée dans chaque app) — cette
+// app n'a de vraie page que pour admissions/rendez-vous/lits/urgences.
+// Exclure ici les entrées dont la vraie page existe dans une AUTRE app évite
+// un lien de menu qui mène à un placeholder "Module prévu" alors que la
+// fonctionnalité tourne déjà ailleurs.
+const MODULES_DANS_UNE_AUTRE_APP = new Set([
+  'personnel', // hospito-super-admin
+  'patients', // hospito-admin
+  'dossiers', 'prescriptions', 'bloc-operatoire', 'laboratoire-imagerie', 'pharmacie', // hospito-medecin
+]);
+
 const NAV_ITEMS = [
   { to: '/', label: 'Tableau de bord', icon: LayoutDashboard, end: true },
-  ...HOSPITAL_MODULES.map((m) => ({ to: `/${m.path}`, label: m.label, icon: m.icon })),
+  ...HOSPITAL_MODULES.filter((m) => !MODULES_DANS_UNE_AUTRE_APP.has(m.path)).map((m) => ({ to: `/${m.path}`, label: m.label, icon: m.icon })),
   { to: '/messages', label: 'Communication interne', icon: MessageCircle },
   { to: '/notifications', label: 'Notifications', icon: Bell },
   { to: '/audit', label: "Journal d'audit", icon: History },
