@@ -6,9 +6,13 @@ import { useAuth } from '../../context/AuthContext';
 import { buildPatientsQuery } from '../../services/patientsService';
 import { listenServices } from '../../services/litsService';
 import { STATUTS_RDV, buildRendezVousQuery, creerRendezVous, changerStatutRendezVous } from '../../services/rendezVousService';
+import {
+  listenDemandesEnAttente, confirmerDemande, refuserDemande, listerMedecins,
+} from '../../services/demandesRendezVousService';
 import { useFirestorePagination } from '../../hooks/useFirestorePagination';
 import DataTable from '../../components/common/DataTable';
 import StatusBadge from '../../components/common/StatusBadge';
+import EmptyState from '../../components/common/EmptyState';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -17,6 +21,104 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 
 const TONE_STATUT = { planifie: 'amber', confirme: 'blue', annule: 'red', termine: 'green' };
 const LABEL_STATUT = { planifie: 'Planifié', confirme: 'Confirmé', annule: 'Annulé', termine: 'Terminé' };
+
+function DemandesEnLigneSection({ etablissementId, actor }) {
+  const [demandes, setDemandes] = useState(null);
+  const [medecins, setMedecins] = useState([]);
+  const [demandeEnCours, setDemandeEnCours] = useState(null);
+  const [form, setForm] = useState({ medecinId: '', dateHeure: '' });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => listenDemandesEnAttente(etablissementId, setDemandes), [etablissementId]);
+  useEffect(() => { listerMedecins(etablissementId).then(setMedecins).catch(() => setMedecins([])); }, [etablissementId]);
+
+  const ouvrirConfirmation = (d) => {
+    setDemandeEnCours(d);
+    setForm({ medecinId: '', dateHeure: '' });
+  };
+
+  const confirmer = async () => {
+    if (!form.dateHeure || (demandeEnCours.type === 'teleconsultation' && !form.medecinId)) {
+      toast.error(demandeEnCours.type === 'teleconsultation' ? 'Médecin et date/heure requis pour une téléconsultation' : 'Date/heure requise');
+      return;
+    }
+    const medecin = medecins.find((m) => m.uid === form.medecinId);
+    setSaving(true);
+    try {
+      await confirmerDemande(demandeEnCours.id, { medecinId: medecin?.uid, medecinNom: medecin?.nom, dateHeure: form.dateHeure }, etablissementId, actor);
+      toast.success('Demande confirmée');
+      setDemandeEnCours(null);
+    } catch (e) {
+      toast.error(e.message || 'Erreur');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const refuser = async (d) => {
+    try {
+      await refuserDemande(d.id, etablissementId, actor);
+      toast.success('Demande refusée');
+    } catch (e) {
+      toast.error(e.message || 'Erreur');
+    }
+  };
+
+  if (demandes === null) return null;
+
+  return (
+    <div className="space-y-3">
+      <h2 className="font-display text-lg font-semibold text-foreground">Demandes en ligne</h2>
+      {!demandes.length ? (
+        <EmptyState title="Aucune demande en attente" description="Les demandes soumises depuis l'app patient apparaîtront ici." />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {demandes.map((d) => (
+            <div key={d.id} className="glass-card-elevated p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-foreground">{d.patientNom}</span>
+                {d.type === 'teleconsultation' && <StatusBadge label="Téléconsultation" tone="blue" />}
+              </div>
+              <p className="text-sm text-muted-foreground">{d.motif}</p>
+              {d.serviceNom && <p className="text-xs text-muted-foreground">{d.serviceNom}</p>}
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => ouvrirConfirmation(d)}>Confirmer</Button>
+                <Button size="sm" variant="ghost" onClick={() => refuser(d)}>Refuser</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={!!demandeEnCours} onOpenChange={(open) => !open && setDemandeEnCours(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Confirmer la demande</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            {demandeEnCours?.type === 'teleconsultation' && (
+              <div className="space-y-1.5">
+                <Label>Médecin</Label>
+                <Select value={form.medecinId} onValueChange={(v) => setForm({ ...form, medecinId: v })}>
+                  <SelectTrigger><SelectValue placeholder="Assigner un médecin" /></SelectTrigger>
+                  <SelectContent>
+                    {medecins.map((m) => <SelectItem key={m.uid} value={m.uid}>{m.nom}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>Date et heure</Label>
+              <Input type="datetime-local" value={form.dateHeure} onChange={(e) => setForm({ ...form, dateHeure: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDemandeEnCours(null)}>Annuler</Button>
+            <Button onClick={confirmer} disabled={saving}>{saving ? 'Confirmation…' : 'Confirmer'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
 
 export default function RendezVousPage() {
   const { user, etablissementId } = useAuth();
@@ -100,6 +202,8 @@ export default function RendezVousPage() {
       </div>
 
       <DataTable columns={columns} rows={pagination.rows} loading={pagination.loading} emptyTitle="Aucun rendez-vous" pagination={pagination} />
+
+      <DemandesEnLigneSection etablissementId={etablissementId} actor={actor} />
 
       <Dialog open={dialogOuvert} onOpenChange={setDialogOuvert}>
         <DialogContent>
