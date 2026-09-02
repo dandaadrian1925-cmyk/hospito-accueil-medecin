@@ -1,5 +1,5 @@
 import {
-  collection, doc, addDoc, updateDoc, query, where, orderBy, serverTimestamp,
+  collection, doc, addDoc, updateDoc, query, where, orderBy, getDocs, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { logAction } from './auditService';
@@ -18,6 +18,13 @@ export const creerAdmission = async ({ patientId, patientNom, service, dateSorti
   });
   await logAction({ actor, etablissementId, action: 'admission.creer', targetType: 'admission', targetId: ref.id, details: { patientId } });
   return ref.id;
+};
+
+// Patients actuellement hospitalisés — pour le sélecteur "Visites" (une
+// visite ne se déclare que pour un patient réellement admis).
+export const listerAdmissionsActives = async (etablissementId) => {
+  const snap = await getDocs(query(collection(db, 'admissions'), where('etablissementId', '==', etablissementId), where('statut', '==', 'admis')));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 };
 
 export const changerStatutAdmission = async (admissionId, statut, etablissementId, actor) => {
