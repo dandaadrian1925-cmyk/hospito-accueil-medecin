@@ -46,7 +46,11 @@ export default function PaiementGuichetPage() {
               <span className="font-semibold text-foreground">{f.patientNom}</span>
               <p className="text-sm text-muted-foreground">{f.libelle}</p>
               <p className="text-lg font-bold text-foreground">{Number(f.montant).toLocaleString('fr-FR')} XAF</p>
-              <Button size="sm" onClick={() => setFactureAEncaisser(f)}>Encaisser en espèces</Button>
+              {f.campayReference ? (
+                <p className="text-xs text-amber-600 font-medium">Paiement Mobile Money en cours — encaissement en espèces bloqué le temps de sa confirmation.</p>
+              ) : (
+                <Button size="sm" onClick={() => setFactureAEncaisser(f)}>Encaisser en espèces</Button>
+              )}
             </div>
           ))}
         </div>
