@@ -56,7 +56,13 @@ function DemandesEnLigneSection({ etablissementId, actor }) {
 
   const ouvrirConfirmation = (d) => {
     setDemandeEnCours(d);
-    setForm({ medecinId: '', dateHeure: '' });
+    // Préremplit avec la préférence du patient (choisie parmi les
+    // spécialistes de garde côté hospito-patient) — une suggestion, pas une
+    // affectation : l'accueil reste libre de changer avant de confirmer.
+    setForm({
+      medecinId: d.medecinPrefereId || '',
+      dateHeure: d.dateSouhaitee ? `${d.dateSouhaitee}T09:00` : '',
+    });
     setMedecinsDeGarde(null);
   };
 
@@ -104,6 +110,9 @@ function DemandesEnLigneSection({ etablissementId, actor }) {
               </div>
               <p className="text-sm text-muted-foreground">{d.motif}</p>
               {d.serviceNom && <p className="text-xs text-muted-foreground">{d.serviceNom}</p>}
+              {d.medecinPrefereNom && (
+                <p className="text-xs text-primary font-medium">Préférence : Dr {d.medecinPrefereNom}{d.dateSouhaitee ? ` — ${new Date(d.dateSouhaitee).toLocaleDateString('fr-FR', { dateStyle: 'medium' })}` : ''}</p>
+              )}
               <div className="flex gap-2">
                 <Button size="sm" onClick={() => ouvrirConfirmation(d)}>Confirmer</Button>
                 <Button size="sm" variant="ghost" onClick={() => refuser(d)}>Refuser</Button>
