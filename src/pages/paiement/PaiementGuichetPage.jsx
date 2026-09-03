@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { CreditCard } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { CreditCard, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
-import { listenFacturesEnAttente, encaisserEnEspeces } from '../../services/facturesService';
+import { listenFacturesEnAttente, encaisserEnEspeces, encaisserAvecPreuve } from '../../services/facturesService';
+import { uploadFile } from '../../supabase/config';
 import EmptyState from '../../components/common/EmptyState';
 import Loader from '../../components/common/Loader';
 import { Button } from '../../components/ui/button';
@@ -13,6 +14,9 @@ export default function PaiementGuichetPage() {
   const actor = { uid: user.uid, email: user.email };
   const [factures, setFactures] = useState(null);
   const [factureAEncaisser, setFactureAEncaisser] = useState(null);
+  const [factureCiblePourPreuve, setFactureCiblePourPreuve] = useState(null);
+  const [uploadingId, setUploadingId] = useState(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => listenFacturesEnAttente(etablissementId, setFactures), [etablissementId]);
 
@@ -23,6 +27,29 @@ export default function PaiementGuichetPage() {
       setFactureAEncaisser(null);
     } catch (e) {
       toast.error(e.message || 'Échec de l’encaissement');
+    }
+  };
+
+  const declencherUploadPreuve = (facture) => {
+    setFactureCiblePourPreuve(facture);
+    fileInputRef.current?.click();
+  };
+
+  const handleFichierPreuve = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    const facture = factureCiblePourPreuve;
+    if (!file || !facture) return;
+    setUploadingId(facture.id);
+    try {
+      const { publicUrl } = await uploadFile('preuves_paiement', `${etablissementId}/${facture.id}/preuve_${Date.now()}`, file);
+      await encaisserAvecPreuve(facture.id, publicUrl, etablissementId, actor);
+      toast.success('Facture encaissée avec preuve de paiement');
+    } catch (err) {
+      toast.error(err.message || "Échec de l'enregistrement de la preuve");
+    } finally {
+      setUploadingId(null);
+      setFactureCiblePourPreuve(null);
     }
   };
 
@@ -49,7 +76,18 @@ export default function PaiementGuichetPage() {
               {f.campayReference ? (
                 <p className="text-xs text-amber-600 font-medium">Paiement Mobile Money en cours — encaissement en espèces bloqué le temps de sa confirmation.</p>
               ) : (
-                <Button size="sm" onClick={() => setFactureAEncaisser(f)}>Encaisser en espèces</Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => setFactureAEncaisser(f)} disabled={uploadingId === f.id}>Encaisser en espèces</Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => declencherUploadPreuve(f)}
+                    disabled={uploadingId === f.id}
+                  >
+                    <Upload size={14} className="mr-1" />
+                    {uploadingId === f.id ? 'Envoi…' : 'Mobile Money (hors app)'}
+                  </Button>
+                </div>
               )}
             </div>
           ))}
@@ -65,6 +103,17 @@ export default function PaiementGuichetPage() {
           onCancel={() => setFactureAEncaisser(null)}
         />
       )}
+
+      {/* Preuve Mobile Money hors app : le patient a payé par lui-même en
+          dehors du flux CamPay in-app (ex. transfert direct), l'accueil
+          constate le paiement via une capture d'écran/reçu Mobile Money. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,.pdf"
+        className="hidden"
+        onChange={handleFichierPreuve}
+      />
     </div>
   );
 }

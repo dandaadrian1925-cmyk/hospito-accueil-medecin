@@ -16,6 +16,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 const EXTENSIONS_AUTORISEES = {
   cni: ['jpg', 'jpeg', 'png', 'pdf'],
   litiges: ['jpg', 'jpeg', 'png', 'webp'],
+  // #nouveau (demande utilisateur, "preuve de paiement Mobile Money hors app")
+  preuves_paiement: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
 };
 const TAILLE_MAX_IMAGE = 10 * 1024 * 1024;
 

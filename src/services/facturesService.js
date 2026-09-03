@@ -28,3 +28,18 @@ export const encaisserEnEspeces = async (factureId, etablissementId, actor) => {
   });
   await logAction({ actor, etablissementId, action: 'facture.encaisser_especes', targetType: 'facture', targetId: factureId });
 };
+
+// Paiement Mobile Money fait HORS de l'app (le patient a payé par lui-même,
+// sans passer par CamPay in-app) : l'accueil constate le paiement via une
+// capture d'écran/reçu Mobile Money uploadée, cf. firestore.rules (factures
+// allow update, branche modePaiement=='mobile_money_preuve').
+export const encaisserAvecPreuve = async (factureId, preuveUrl, etablissementId, actor) => {
+  await updateDoc(doc(db, 'factures', factureId), {
+    statut: 'payee',
+    modePaiement: 'mobile_money_preuve',
+    preuveUrl,
+    payeePar: actor.uid,
+    payeeAt: serverTimestamp(),
+  });
+  await logAction({ actor, etablissementId, action: 'facture.encaisser_preuve', targetType: 'facture', targetId: factureId });
+};
