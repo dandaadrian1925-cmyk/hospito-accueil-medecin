@@ -1,5 +1,5 @@
 import {
-  collection, doc, query, where, orderBy, onSnapshot, updateDoc, serverTimestamp,
+  collection, doc, query, where, orderBy, onSnapshot, writeBatch, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { logAction } from './auditService';
@@ -19,13 +19,21 @@ export const listenFacturesEnAttente = (etablissementId, callback) => {
   return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
 };
 
-export const encaisserEnEspeces = async (factureId, etablissementId, actor) => {
-  await updateDoc(doc(db, 'factures', factureId), {
-    statut: 'payee',
-    modePaiement: 'especes',
-    payeePar: actor.uid,
-    payeeAt: serverTimestamp(),
+// billetSessionId optionnel (§ billet de session) : quand la facture réglée
+// est le "coupon" d'un check-in, le paiement fait aussi passer le billet à
+// 'pret' — dans le MÊME writeBatch, jamais en deux écritures séparées
+// (même principe que le flip atomique côté serveur pour les paiements CamPay
+// d'examens, mais ici côté client puisqu'il n'y a pas de serveur impliqué
+// pour un encaissement espèces/preuve).
+export const encaisserEnEspeces = async (factureId, etablissementId, actor, billetSessionId) => {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'factures', factureId), {
+    statut: 'payee', modePaiement: 'especes', payeePar: actor.uid, payeeAt: serverTimestamp(),
   });
+  if (billetSessionId) {
+    batch.update(doc(db, 'billets_session', billetSessionId), { statut: 'pret' });
+  }
+  await batch.commit();
   await logAction({ actor, etablissementId, action: 'facture.encaisser_especes', targetType: 'facture', targetId: factureId });
 };
 
@@ -33,13 +41,14 @@ export const encaisserEnEspeces = async (factureId, etablissementId, actor) => {
 // sans passer par CamPay in-app) : l'accueil constate le paiement via une
 // capture d'écran/reçu Mobile Money uploadée, cf. firestore.rules (factures
 // allow update, branche modePaiement=='mobile_money_preuve').
-export const encaisserAvecPreuve = async (factureId, preuveUrl, etablissementId, actor) => {
-  await updateDoc(doc(db, 'factures', factureId), {
-    statut: 'payee',
-    modePaiement: 'mobile_money_preuve',
-    preuveUrl,
-    payeePar: actor.uid,
-    payeeAt: serverTimestamp(),
+export const encaisserAvecPreuve = async (factureId, preuveUrl, etablissementId, actor, billetSessionId) => {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'factures', factureId), {
+    statut: 'payee', modePaiement: 'mobile_money_preuve', preuveUrl, payeePar: actor.uid, payeeAt: serverTimestamp(),
   });
+  if (billetSessionId) {
+    batch.update(doc(db, 'billets_session', billetSessionId), { statut: 'pret' });
+  }
+  await batch.commit();
   await logAction({ actor, etablissementId, action: 'facture.encaisser_preuve', targetType: 'facture', targetId: factureId });
 };

@@ -22,7 +22,7 @@ export default function PaiementGuichetPage() {
 
   const confirmerEncaissement = async () => {
     try {
-      await encaisserEnEspeces(factureAEncaisser.id, etablissementId, actor);
+      await encaisserEnEspeces(factureAEncaisser.id, etablissementId, actor, factureAEncaisser.billetSessionId);
       toast.success('Facture encaissée');
       setFactureAEncaisser(null);
     } catch (e) {
@@ -43,7 +43,7 @@ export default function PaiementGuichetPage() {
     setUploadingId(facture.id);
     try {
       const { publicUrl } = await uploadFile('preuves_paiement', `${etablissementId}/${facture.id}/preuve_${Date.now()}`, file);
-      await encaisserAvecPreuve(facture.id, publicUrl, etablissementId, actor);
+      await encaisserAvecPreuve(facture.id, publicUrl, etablissementId, actor, facture.billetSessionId);
       toast.success('Facture encaissée avec preuve de paiement');
     } catch (err) {
       toast.error(err.message || "Échec de l'enregistrement de la preuve");
