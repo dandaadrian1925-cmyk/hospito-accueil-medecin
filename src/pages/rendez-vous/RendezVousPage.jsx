@@ -9,6 +9,7 @@ import { STATUTS_RDV, buildRendezVousQuery, creerRendezVous, changerStatutRendez
 import {
   listenDemandesEnAttente, confirmerDemande, refuserDemande, listerMedecins,
 } from '../../services/demandesRendezVousService';
+import { listerMedecinsDeGarde, creneauDepuisHeure } from '../../services/planningService';
 import { useFirestorePagination } from '../../hooks/useFirestorePagination';
 import DataTable from '../../components/common/DataTable';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -28,13 +29,35 @@ function DemandesEnLigneSection({ etablissementId, actor }) {
   const [demandeEnCours, setDemandeEnCours] = useState(null);
   const [form, setForm] = useState({ medecinId: '', dateHeure: '' });
   const [saving, setSaving] = useState(false);
+  // Filtrage par planning (garde du jour/créneau choisi) — null tant qu'aucune
+  // date/heure n'est renseignée ou que la vérification est en cours ; repasse
+  // à la liste complète des médecins si personne n'est explicitement de garde
+  // (planning pas encore renseigné pour cet établissement), pour ne jamais
+  // bloquer la confirmation faute de données.
+  const [medecinsDeGarde, setMedecinsDeGarde] = useState(null);
 
   useEffect(() => listenDemandesEnAttente(etablissementId, setDemandes), [etablissementId]);
   useEffect(() => { listerMedecins(etablissementId).then(setMedecins).catch(() => setMedecins([])); }, [etablissementId]);
 
+  useEffect(() => {
+    if (!form.dateHeure) { setMedecinsDeGarde(null); return; }
+    const dateObj = new Date(form.dateHeure);
+    const date = form.dateHeure.slice(0, 10);
+    const creneau = creneauDepuisHeure(dateObj.getHours());
+    let annule = false;
+    listerMedecinsDeGarde(etablissementId, date, creneau, demandeEnCours?.serviceId).then((uids) => {
+      if (!annule) setMedecinsDeGarde(uids);
+    }).catch(() => { if (!annule) setMedecinsDeGarde(null); });
+    return () => { annule = true; };
+  }, [etablissementId, form.dateHeure, demandeEnCours?.serviceId]);
+
+  const medecinsProposes = medecinsDeGarde?.size ? medecins.filter((m) => medecinsDeGarde.has(m.uid)) : medecins;
+  const planningRenseigne = !!medecinsDeGarde?.size;
+
   const ouvrirConfirmation = (d) => {
     setDemandeEnCours(d);
     setForm({ medecinId: '', dateHeure: '' });
+    setMedecinsDeGarde(null);
   };
 
   const confirmer = async () => {
@@ -94,20 +117,25 @@ function DemandesEnLigneSection({ etablissementId, actor }) {
         <DialogContent>
           <DialogHeader><DialogTitle>Confirmer la demande</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            {demandeEnCours?.type === 'teleconsultation' && (
-              <div className="space-y-1.5">
-                <Label>Médecin</Label>
-                <Select value={form.medecinId} onValueChange={(v) => setForm({ ...form, medecinId: v })}>
-                  <SelectTrigger><SelectValue placeholder="Assigner un médecin" /></SelectTrigger>
-                  <SelectContent>
-                    {medecins.map((m) => <SelectItem key={m.uid} value={m.uid}>{m.nom}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
             <div className="space-y-1.5">
               <Label>Date et heure</Label>
               <Input type="datetime-local" value={form.dateHeure} onChange={(e) => setForm({ ...form, dateHeure: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Médecin{demandeEnCours?.type === 'teleconsultation' ? '' : ' (optionnel)'}</Label>
+              <Select value={form.medecinId} onValueChange={(v) => setForm({ ...form, medecinId: v })}>
+                <SelectTrigger><SelectValue placeholder="Assigner un médecin" /></SelectTrigger>
+                <SelectContent>
+                  {medecinsProposes.map((m) => <SelectItem key={m.uid} value={m.uid}>{m.nom}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {form.dateHeure && (
+                <p className="text-xs text-muted-foreground">
+                  {planningRenseigne
+                    ? 'Médecins de garde sur ce créneau, d\'après le planning.'
+                    : 'Aucun planning renseigné pour ce créneau — tous les médecins de l\'établissement sont proposés.'}
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
