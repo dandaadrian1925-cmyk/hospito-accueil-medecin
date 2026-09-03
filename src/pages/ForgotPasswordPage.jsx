@@ -46,7 +46,7 @@ export default function ForgotPasswordPage() {
         className="relative z-10 w-full max-w-md px-6"
       >
         <div className="text-center mb-10">
-          <h1 className="font-display text-4xl font-bold text-foreground mb-3" style={{ textShadow: '0 1px 12px hsl(0 0% 100% / 0.4)' }}>Hospito Accueil</h1>
+          <h1 className="font-display text-4xl font-bold text-foreground mb-3" style={{ textShadow: '0 1px 12px hsl(0 0% 100% / 0.4)' }}>HostoConnect Accueil</h1>
           <p className="text-foreground/80 text-base max-w-sm mx-auto font-medium">
             Espace réservé au personnel d'accueil.
           </p>

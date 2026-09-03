@@ -42,7 +42,7 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
       <div className="flex items-center gap-3 px-5 h-16 border-b border-sidebar-border">
         {!collapsed && (
           <span className="font-display text-lg font-bold text-sidebar-primary-foreground whitespace-nowrap">
-            Hospito <span className="text-sidebar-primary">Accueil</span>
+            HostoConnect <span className="text-sidebar-primary">Accueil</span>
           </span>
         )}
         <button onClick={() => setCollapsed(!collapsed)} className="hidden lg:flex ml-auto p-1.5 rounded-lg hover:bg-sidebar-accent transition-colors">

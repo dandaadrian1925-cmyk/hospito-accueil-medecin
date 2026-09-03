@@ -17,7 +17,7 @@ const TITLES = [
 function titleFor(pathname) {
   if (pathname === '/') return 'Tableau de bord';
   const match = TITLES.find((t) => pathname.startsWith(t.prefix));
-  return match?.label || 'Hospito Accueil';
+  return match?.label || 'HostoConnect Accueil';
 }
 
 export default function AdminLayout() {
