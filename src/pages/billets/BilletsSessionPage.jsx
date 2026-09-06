@@ -22,11 +22,11 @@ const TONE_STATUT = { a_payer: 'amber', pret: 'green', consulte: 'gray' };
 const PARAMETRES_VIDE = { temperature: '', tension: '', poids: '', pouls: '' };
 
 export default function BilletsSessionPage() {
-  const { user, etablissementId } = useAuth();
+  const { user, userProfile, etablissementId } = useAuth();
   const actor = { uid: user.uid, email: user.email };
 
   const [patients, setPatients] = useState([]);
-  const [services, setServices] = useState([]);
+  const [tousLesServices, setTousLesServices] = useState([]);
   const [billets, setBillets] = useState(null);
   const [patientId, setPatientId] = useState('');
   const [serviceId, setServiceId] = useState('');
@@ -39,7 +39,15 @@ export default function BilletsSessionPage() {
     if (!etablissementId) return;
     getDocs(buildPatientsQuery(etablissementId)).then((snap) => setPatients(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
   }, [etablissementId]);
-  useEffect(() => listenServices(etablissementId, setServices), [etablissementId]);
+  useEffect(() => listenServices(etablissementId, setTousLesServices), [etablissementId]);
+
+  // #nouveau (demande utilisateur, "restreindre l'accès de certains accueils à
+  // certains services") : servicesAutorises (posé depuis hospito-admin, fiche
+  // Personnel) — tableau vide ou absent = ce guichet est généraliste, voit
+  // tous les services (comportement historique, choix explicite de
+  // l'utilisateur, pas de deny-by-default ici).
+  const restriction = userProfile?.servicesAutorises;
+  const services = restriction?.length ? tousLesServices.filter((s) => restriction.includes(s.id)) : tousLesServices;
   useEffect(() => listenBilletsDuJour(etablissementId, setBillets), [etablissementId]);
 
   const creer = async () => {
