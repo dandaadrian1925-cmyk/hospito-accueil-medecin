@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
-import { LayoutDashboard, MessageCircle, Bell, History, UserCircle, ChevronLeft, X, LogOut } from 'lucide-react';
+import { LayoutDashboard, MessageCircle, Bell, UserCircle, ChevronLeft, X, LogOut } from 'lucide-react';
 import { auth } from '../../firebase/config';
 import { HOSPITAL_MODULES } from '../../lib/hospitalModules';
 import ConfirmDialog from '../common/ConfirmDialog';
 
 // HOSPITAL_MODULES est une liste partagée (dupliquée dans chaque app) — cette
-// app n'a de vraie page que pour admissions/rendez-vous/lits/urgences.
-// Exclure ici les entrées dont la vraie page existe dans une AUTRE app évite
-// un lien de menu qui mène à un placeholder "Module prévu" alors que la
-// fonctionnalité tourne déjà ailleurs.
+// app n'a de vraie page que pour admissions/rendez-vous/billets/etc (voir
+// App.jsx pour la liste exacte). Exclure ici les entrées dont la vraie page
+// existe dans une AUTRE app évite un lien de menu qui mène à un placeholder
+// "Module prévu" alors que la fonctionnalité tourne déjà ailleurs.
 const MODULES_DANS_UNE_AUTRE_APP = new Set([
   'personnel', // hospito-super-admin
   'patients', 'facturation', // hospito-admin
@@ -22,7 +22,6 @@ const NAV_ITEMS = [
   ...HOSPITAL_MODULES.filter((m) => !MODULES_DANS_UNE_AUTRE_APP.has(m.path)).map((m) => ({ to: `/${m.path}`, label: m.label, icon: m.icon })),
   { to: '/messages', label: 'Communication interne', icon: MessageCircle },
   { to: '/notifications', label: 'Notifications', icon: Bell },
-  { to: '/audit', label: "Journal d'audit", icon: History },
   { to: '/profil', label: 'Profil', icon: UserCircle },
 ];
 

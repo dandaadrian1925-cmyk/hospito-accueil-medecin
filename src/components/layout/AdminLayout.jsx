@@ -10,7 +10,6 @@ const TITLES = [
   ...HOSPITAL_MODULES.map((m) => ({ prefix: `/${m.path}`, label: m.label })),
   { prefix: '/messages', label: 'Communication interne' },
   { prefix: '/notifications', label: 'Notifications' },
-  { prefix: '/audit', label: "Journal d'audit" },
   { prefix: '/profil', label: 'Profil' },
 ];
 

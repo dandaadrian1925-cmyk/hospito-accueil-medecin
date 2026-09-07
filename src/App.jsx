@@ -13,13 +13,10 @@ const ModulePrevu = lazy(() => import('./pages/ModulePrevu'));
 const BilletsSessionPage = lazy(() => import('./pages/billets/BilletsSessionPage'));
 const AdmissionsPage = lazy(() => import('./pages/admissions/AdmissionsPage'));
 const RendezVousPage = lazy(() => import('./pages/rendez-vous/RendezVousPage'));
-const LitsPage = lazy(() => import('./pages/lits/LitsPage'));
-const UrgencesPage = lazy(() => import('./pages/urgences/UrgencesPage'));
 const PaiementGuichetPage = lazy(() => import('./pages/paiement/PaiementGuichetPage'));
 const VisitesPage = lazy(() => import('./pages/visites/VisitesPage'));
 const TransparenceAttentePage = lazy(() => import('./pages/transparence/TransparenceAttentePage'));
 const PlanningPage = lazy(() => import('./pages/planning/PlanningPage'));
-const AuditLogPage = lazy(() => import('./pages/audit/AuditLogPage'));
 const MessagesPage = lazy(() => import('./pages/messages/MessagesPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const ProfilPage = lazy(() => import('./pages/profil/ProfilPage'));
@@ -61,19 +58,16 @@ export default function App() {
               <Route path="billets" element={<BilletsSessionPage />} />
               <Route path="admissions" element={<AdmissionsPage />} />
               <Route path="rendez-vous" element={<RendezVousPage />} />
-              <Route path="lits" element={<LitsPage />} />
-              <Route path="urgences" element={<UrgencesPage />} />
               <Route path="paiement" element={<PaiementGuichetPage />} />
               <Route path="visites" element={<VisitesPage />} />
               <Route path="transparence" element={<TransparenceAttentePage />} />
               <Route path="planning" element={<PlanningPage />} />
-              {HOSPITAL_MODULES.filter((m) => !['billets', 'admissions', 'rendez-vous', 'lits', 'urgences', 'paiement', 'visites', 'transparence', 'planning'].includes(m.path)).map((m) => (
+              {HOSPITAL_MODULES.filter((m) => !['billets', 'admissions', 'rendez-vous', 'paiement', 'visites', 'transparence', 'planning'].includes(m.path)).map((m) => (
                 <Route key={m.path} path={m.path} element={<ModulePrevu titre={m.label} phase={m.phase} />} />
               ))}
 
               <Route path="messages" element={<MessagesPage />} />
               <Route path="notifications" element={<NotificationsPage />} />
-              <Route path="audit" element={<AuditLogPage />} />
               <Route path="profil" element={<ProfilPage />} />
             </Route>
 
