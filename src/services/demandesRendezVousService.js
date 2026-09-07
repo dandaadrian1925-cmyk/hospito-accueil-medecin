@@ -50,3 +50,23 @@ export const listerMedecins = async (etablissementId) => {
   }
   return affiliations.map((a) => ({ uid: a.userId, nom: profils[a.userId]?.displayName || a.userId }));
 };
+
+// #nouveau (demande utilisateur, "billet de session lié à UN médecin
+// précis") : même requête que listerMedecins, filtrée en plus sur le service
+// (affiliations.serviceId, le service RÉEL du médecin — cf. hospito-admin,
+// champ singulier distinct de servicesAutorises qui, lui, ne concerne que
+// l'accueil). Utilisé par BilletsSessionPage pour proposer, à la création
+// d'un billet, uniquement les médecins de CE service précis.
+export const listerMedecinsDuService = async (etablissementId, serviceId) => {
+  const snap = await getDocs(query(collection(db, 'affiliations'), where('etablissementId', '==', etablissementId), where('actif', '==', true)));
+  const affiliations = snap.docs.map((d) => d.data()).filter((a) => a.role === 'medecin' && a.serviceId === serviceId);
+  const uids = [...new Set(affiliations.map((a) => a.userId))];
+  const profils = {};
+  for (let i = 0; i < uids.length; i += 30) {
+    const chunk = uids.slice(i, i + 30);
+    if (!chunk.length) continue;
+    const usersSnap = await getDocs(query(collection(db, 'users'), where(documentId(), 'in', chunk)));
+    usersSnap.docs.forEach((d) => { profils[d.id] = d.data(); });
+  }
+  return affiliations.map((a) => ({ uid: a.userId, nom: profils[a.userId]?.displayName || a.userId }));
+};

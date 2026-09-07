@@ -42,7 +42,10 @@ export const trouverBilletActifDuJour = async (patientId, etablissementId) => {
   return actif || null;
 };
 
-export const creerBillet = async ({ patientId, patientNom, serviceId, serviceNom }, etablissementId, actor) => {
+// `medecinId`/`medecinNom` optionnels (demande utilisateur, "file d'attente
+// liée à UN médecin précis") : absent = comportement historique, visible par
+// tout le service (cf. hospito-medecin, listenFileAttente).
+export const creerBillet = async ({ patientId, patientNom, serviceId, serviceNom, medecinId, medecinNom }, etablissementId, actor) => {
   const dejaActif = await trouverBilletActifDuJour(patientId, etablissementId);
   if (dejaActif) throw new Error('BILLET_NON_EXPIRE');
 
@@ -56,6 +59,7 @@ export const creerBillet = async ({ patientId, patientNom, serviceId, serviceNom
   const batch = writeBatch(db);
   batch.set(billetRef, {
     etablissementId, patientId, patientNom, serviceId, serviceNom,
+    medecinId: medecinId || null, medecinNom: medecinNom || null,
     statut: tarif ? 'a_payer' : 'pret',
     factureId: null, parametres: null, parametresAt: null,
     creePar: actor?.uid || null, consultePar: null, consulteAt: null,

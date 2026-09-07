@@ -6,6 +6,7 @@ import { getDocs } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { buildPatientsQuery } from '../../services/patientsService';
 import { listenServices } from '../../services/litsService';
+import { listerMedecinsDuService } from '../../services/demandesRendezVousService';
 import { listenBilletsDuJour, creerBillet, saisirParametres } from '../../services/billetsSessionService';
 import StatusBadge from '../../components/common/StatusBadge';
 import EmptyState from '../../components/common/EmptyState';
@@ -30,6 +31,8 @@ export default function BilletsSessionPage() {
   const [billets, setBillets] = useState(null);
   const [patientId, setPatientId] = useState('');
   const [serviceId, setServiceId] = useState('');
+  const [medecins, setMedecins] = useState([]);
+  const [medecinId, setMedecinId] = useState('');
   const [creation, setCreation] = useState(false);
   const [billetOuvert, setBilletOuvert] = useState(null);
   const [parametres, setParametres] = useState(PARAMETRES_VIDE);
@@ -56,14 +59,27 @@ export default function BilletsSessionPage() {
   }, [services]);
   useEffect(() => listenBilletsDuJour(etablissementId, setBillets), [etablissementId]);
 
+  // #nouveau (demande utilisateur, "billet lié à UN médecin précis") :
+  // proposé UNE FOIS le service choisi, jamais obligatoire (un billet sans
+  // médecin reste visible par tout le service, comportement historique).
+  useEffect(() => {
+    setMedecinId('');
+    if (!serviceId || !etablissementId) { setMedecins([]); return; }
+    listerMedecinsDuService(etablissementId, serviceId).then(setMedecins).catch(() => setMedecins([]));
+  }, [serviceId, etablissementId]);
+
   const creer = async () => {
     const patient = patients.find((p) => p.id === patientId);
     const service = services.find((s) => s.id === serviceId);
+    const medecin = medecins.find((m) => m.uid === medecinId);
     if (!patient || !service) { toast.error('Patient et service requis'); return; }
     setCreation(true);
     try {
       const { statut } = await creerBillet(
-        { patientId: patient.id, patientNom: `${patient.prenom} ${patient.nom}`, serviceId: service.id, serviceNom: service.nom },
+        {
+          patientId: patient.id, patientNom: `${patient.prenom} ${patient.nom}`, serviceId: service.id, serviceNom: service.nom,
+          medecinId: medecin?.uid, medecinNom: medecin?.nom,
+        },
         etablissementId, actor,
       );
       if (statut === 'a_payer') {
@@ -138,6 +154,17 @@ export default function BilletsSessionPage() {
             )}
           </div>
         </div>
+        {!!serviceId && (
+          <div className="space-y-1.5">
+            <Label>Médecin (optionnel — sinon visible par tout le service)</Label>
+            <Select value={medecinId} onValueChange={setMedecinId} disabled={!medecins.length}>
+              <SelectTrigger><SelectValue placeholder={medecins.length ? 'Assigner à un médecin précis' : 'Aucun médecin dans ce service'} /></SelectTrigger>
+              <SelectContent>
+                {medecins.map((m) => <SelectItem key={m.uid} value={m.uid}>Dr {m.nom}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <Button onClick={creer} disabled={creation}>{creation ? 'Création…' : 'Créer le billet'}</Button>
       </div>
 
