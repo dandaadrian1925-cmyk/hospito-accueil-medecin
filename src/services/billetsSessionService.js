@@ -24,7 +24,28 @@ export const listenBilletsDuJour = (etablissementId, callback) => {
   return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
 };
 
+// #nouveau (demande utilisateur, "empêcher un billet en double tant que le
+// dernier n'a pas expiré") : un billet "expire" à minuit (même borne que
+// listenBilletsDuJour) ou dès qu'il passe à 'consulte' — avant ça, il reste
+// un passage actif pour ce patient, pas la peine (et source de confusion en
+// file d'attente) d'en recréer un second.
+export const trouverBilletActifDuJour = async (patientId, etablissementId) => {
+  const debut = new Date();
+  debut.setHours(0, 0, 0, 0);
+  const snap = await getDocs(query(
+    collection(db, 'billets_session'),
+    where('etablissementId', '==', etablissementId),
+    where('patientId', '==', patientId),
+    where('createdAt', '>=', Timestamp.fromDate(debut)),
+  ));
+  const actif = snap.docs.map((d) => ({ id: d.id, ...d.data() })).find((b) => b.statut !== 'consulte');
+  return actif || null;
+};
+
 export const creerBillet = async ({ patientId, patientNom, serviceId, serviceNom }, etablissementId, actor) => {
+  const dejaActif = await trouverBilletActifDuJour(patientId, etablissementId);
+  if (dejaActif) throw new Error('BILLET_NON_EXPIRE');
+
   const tarifSnap = await getDocs(query(
     collection(db, 'tarifs_consultation'),
     where('etablissementId', '==', etablissementId), where('serviceId', '==', serviceId),

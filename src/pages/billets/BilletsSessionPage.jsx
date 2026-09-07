@@ -74,7 +74,9 @@ export default function BilletsSessionPage() {
       setPatientId('');
       setServiceId('');
     } catch (e) {
-      toast.error(e.message || 'Erreur');
+      toast.error(e.message === 'BILLET_NON_EXPIRE'
+        ? 'Ce patient a déjà un billet actif aujourd\'hui — retrouvez-le dans la liste ci-dessous plutôt que d\'en recréer un.'
+        : (e.message || 'Erreur'));
     } finally {
       setCreation(false);
     }
