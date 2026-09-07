@@ -23,8 +23,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 const TONE_STATUT = { planifie: 'amber', confirme: 'blue', annule: 'red', termine: 'green' };
 const LABEL_STATUT = { planifie: 'Planifié', confirme: 'Confirmé', annule: 'Annulé', termine: 'Terminé' };
 
-function DemandesEnLigneSection({ etablissementId, actor }) {
-  const [demandes, setDemandes] = useState(null);
+function DemandesEnLigneSection({ etablissementId, actor, servicesAutorises }) {
+  const [toutesLesDemandes, setToutesLesDemandes] = useState(null);
   const [medecins, setMedecins] = useState([]);
   const [demandeEnCours, setDemandeEnCours] = useState(null);
   const [form, setForm] = useState({ medecinId: '', dateHeure: '' });
@@ -36,8 +36,18 @@ function DemandesEnLigneSection({ etablissementId, actor }) {
   // bloquer la confirmation faute de données.
   const [medecinsDeGarde, setMedecinsDeGarde] = useState(null);
 
-  useEffect(() => listenDemandesEnAttente(etablissementId, setDemandes), [etablissementId]);
+  useEffect(() => listenDemandesEnAttente(etablissementId, setToutesLesDemandes), [etablissementId]);
   useEffect(() => { listerMedecins(etablissementId).then(setMedecins).catch(() => setMedecins([])); }, [etablissementId]);
+
+  // #nouveau (demande utilisateur, "l'accueil en charge du service choisi et
+  // pas les autres accueils voit ma demande") : listenDemandesEnAttente ne
+  // filtre que par établissement — un accueil restreint à certains services
+  // (servicesAutorises, réglé depuis hospito-admin) ne doit voir QUE les
+  // demandes de CES services-là. Filtrage client, même principe que
+  // BilletsSessionPage.jsx (tableau vide/absent = généraliste, voit tout).
+  const demandes = servicesAutorises?.length
+    ? (toutesLesDemandes?.filter((d) => d.serviceId && servicesAutorises.includes(d.serviceId)) ?? null)
+    : toutesLesDemandes;
 
   useEffect(() => {
     if (!form.dateHeure) { setMedecinsDeGarde(null); return; }
@@ -158,12 +168,12 @@ function DemandesEnLigneSection({ etablissementId, actor }) {
 }
 
 export default function RendezVousPage() {
-  const { user, etablissementId } = useAuth();
+  const { user, userProfile, etablissementId } = useAuth();
   const actor = { uid: user.uid, email: user.email };
   const pagination = useFirestorePagination(() => buildRendezVousQuery(etablissementId), [etablissementId]);
 
   const [patients, setPatients] = useState([]);
-  const [services, setServices] = useState([]);
+  const [servicesActifs, setServicesActifs] = useState([]);
   const [dialogOuvert, setDialogOuvert] = useState(false);
   const [form, setForm] = useState({ patientId: '', serviceId: '', dateHeure: '', motif: '' });
   const [saving, setSaving] = useState(false);
@@ -175,8 +185,16 @@ export default function RendezVousPage() {
 
   useEffect(() => {
     if (!etablissementId) return;
-    return listenServices(etablissementId, (all) => setServices(all.filter((s) => s.actif)));
+    return listenServices(etablissementId, (all) => setServicesActifs(all.filter((s) => s.actif)));
   }, [etablissementId]);
+
+  // Même restriction que Billet de session : un accueil limité à certains
+  // services ne doit pouvoir créer un RDV au guichet que pour CES services.
+  const restriction = userProfile?.servicesAutorises;
+  const services = restriction?.length ? servicesActifs.filter((s) => restriction.includes(s.id)) : servicesActifs;
+  useEffect(() => {
+    if (services.length === 1 && form.serviceId !== services[0].id) setForm((f) => ({ ...f, serviceId: services[0].id }));
+  }, [services]);
 
   const creer = async () => {
     const patient = patients.find((p) => p.id === form.patientId);
@@ -240,7 +258,7 @@ export default function RendezVousPage() {
 
       <DataTable columns={columns} rows={pagination.rows} loading={pagination.loading} emptyTitle="Aucun rendez-vous" pagination={pagination} />
 
-      <DemandesEnLigneSection etablissementId={etablissementId} actor={actor} />
+      <DemandesEnLigneSection etablissementId={etablissementId} actor={actor} servicesAutorises={restriction} />
 
       <Dialog open={dialogOuvert} onOpenChange={setDialogOuvert}>
         <DialogContent>
@@ -257,12 +275,18 @@ export default function RendezVousPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Service</Label>
-              <Select value={form.serviceId} onValueChange={(v) => setForm({ ...form, serviceId: v })}>
-                <SelectTrigger><SelectValue placeholder="Sélectionner un service" /></SelectTrigger>
-                <SelectContent>
-                  {services.map((s) => <SelectItem key={s.id} value={s.id}>{s.nom}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {services.length === 1 ? (
+                <div className="h-10 px-3 flex items-center rounded-md border border-input bg-secondary/40 text-sm text-foreground">
+                  {services[0].nom}
+                </div>
+              ) : (
+                <Select value={form.serviceId} onValueChange={(v) => setForm({ ...form, serviceId: v })}>
+                  <SelectTrigger><SelectValue placeholder="Sélectionner un service" /></SelectTrigger>
+                  <SelectContent>
+                    {services.map((s) => <SelectItem key={s.id} value={s.id}>{s.nom}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Date et heure</Label>

@@ -48,6 +48,12 @@ export default function BilletsSessionPage() {
   // l'utilisateur, pas de deny-by-default ici).
   const restriction = userProfile?.servicesAutorises;
   const services = restriction?.length ? tousLesServices.filter((s) => restriction.includes(s.id)) : tousLesServices;
+  // Un seul service autorisé = plus besoin de le choisir à chaque billet,
+  // il est présélectionné automatiquement (cf. demande utilisateur,
+  // "plus de sélecteur nulle part" pour un accueil mono-service).
+  useEffect(() => {
+    if (services.length === 1 && serviceId !== services[0].id) setServiceId(services[0].id);
+  }, [services]);
   useEffect(() => listenBilletsDuJour(etablissementId, setBillets), [etablissementId]);
 
   const creer = async () => {
@@ -116,12 +122,18 @@ export default function BilletsSessionPage() {
           </div>
           <div className="space-y-1.5">
             <Label>Service</Label>
-            <Select value={serviceId} onValueChange={setServiceId}>
-              <SelectTrigger><SelectValue placeholder="Sélectionner un service" /></SelectTrigger>
-              <SelectContent>
-                {services.map((s) => <SelectItem key={s.id} value={s.id}>{s.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            {services.length === 1 ? (
+              <div className="h-10 px-3 flex items-center rounded-md border border-input bg-secondary/40 text-sm text-foreground">
+                {services[0].nom}
+              </div>
+            ) : (
+              <Select value={serviceId} onValueChange={setServiceId}>
+                <SelectTrigger><SelectValue placeholder="Sélectionner un service" /></SelectTrigger>
+                <SelectContent>
+                  {services.map((s) => <SelectItem key={s.id} value={s.id}>{s.nom}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </div>
         <Button onClick={creer} disabled={creation}>{creation ? 'Création…' : 'Créer le billet'}</Button>
