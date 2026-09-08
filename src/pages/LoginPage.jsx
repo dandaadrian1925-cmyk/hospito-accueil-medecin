@@ -30,6 +30,12 @@ export default function LoginPage() {
         'auth/network-request-failed': 'Problème de connexion réseau — réessayez.',
       };
       toast.error(msgs[err.code] || 'Identifiants invalides');
+      // #nouveau (demande utilisateur, "partout où on demande un email et un
+      // mot de passe, vider les champs après une tentative") — jamais laisser
+      // un mot de passe erroné (ou celui d'un poste partagé) visible dans le
+      // formulaire.
+      setEmail('');
+      setPassword('');
     } finally {
       setSubmitting(false);
     }
