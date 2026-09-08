@@ -57,12 +57,22 @@ export const uploadFile = async (bucket, path, file) => {
   // #sécurité (variant analysis, corrigé) : Content-Type dérivé côté serveur
   // (cf. secure-upload-url), jamais `file.type` seul (déclaré par le
   // navigateur, pas une preuve).
-  const { error } = await supabase.storage.from(bucket).uploadToSignedUrl(fullPath, authData.token, file, {
+  // #bug CRITIQUE (corrigé, "upload des résultats d'examens" — trouvé en
+  // testant un AUTRE bucket, révèle que "preuves_paiement" était cassé en
+  // production) : le bucket HostoConnect réel (ex. "hospito-preuves_paiement")
+  // diffère du nom logique demandé ("preuves_paiement") — uploader avec le
+  // nom logique pointe vers un bucket différent de celui signé par le
+  // serveur, rejeté avec un 400 à chaque tentative. Toujours utiliser le
+  // bucket/chemin renvoyés par le serveur (même correctif déjà appliqué dans
+  // hospito-admin/hospito-patient/hospito-super-admin).
+  const storageBucket = authData.bucket || bucket;
+  const storagePath = authData.path || fullPath;
+  const { error } = await supabase.storage.from(storageBucket).uploadToSignedUrl(storagePath, authData.token, file, {
     contentType: authData.contentType || file.type || undefined,
   });
   if (error) throw error;
-  const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(fullPath);
-  return { path: fullPath, publicUrl };
+  const { data: { publicUrl } } = supabase.storage.from(storageBucket).getPublicUrl(storagePath);
+  return { path: storagePath, publicUrl };
 };
 
 // Delete file from Supabase Storage
