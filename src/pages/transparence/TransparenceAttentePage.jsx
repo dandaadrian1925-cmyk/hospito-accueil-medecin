@@ -36,7 +36,7 @@ export default function TransparenceAttentePage() {
         <h1 className="font-display text-2xl font-bold text-foreground flex items-center gap-2">
           <Clock size={22} className="text-primary" /> Attente & transparence
         </h1>
-        <p className="text-muted-foreground mt-1">Temps d'attente moyen aux urgences, affiché publiquement aux patients.</p>
+        <p className="text-muted-foreground mt-1">Temps d'attente moyen en consultation (arrivée au guichet → prise en charge), affiché publiquement aux patients.</p>
       </div>
 
       <div className="glass-card-elevated p-6 max-w-sm space-y-4">
