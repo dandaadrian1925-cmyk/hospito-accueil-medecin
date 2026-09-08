@@ -44,16 +44,11 @@ export default function BilletsSessionPage() {
   }, [etablissementId]);
   useEffect(() => listenServices(etablissementId, setTousLesServices), [etablissementId]);
 
-  // #nouveau (demande utilisateur, "restreindre l'accès de certains accueils à
-  // certains services") : servicesAutorises (posé depuis hospito-admin, fiche
-  // Personnel) — tableau vide ou absent = ce guichet est généraliste, voit
-  // tous les services (comportement historique, choix explicite de
-  // l'utilisateur, pas de deny-by-default ici).
-  const restriction = userProfile?.servicesAutorises;
-  const services = restriction?.length ? tousLesServices.filter((s) => restriction.includes(s.id)) : tousLesServices;
-  // Un seul service autorisé = plus besoin de le choisir à chaque billet,
-  // il est présélectionné automatiquement (cf. demande utilisateur,
-  // "plus de sélecteur nulle part" pour un accueil mono-service).
+  // Chaque compte accueil gère toujours exactement un service (serviceId,
+  // réglé depuis hospito-admin) — plus besoin de le choisir à chaque billet,
+  // il est présélectionné automatiquement.
+  const monServiceId = userProfile?.serviceId;
+  const services = monServiceId ? tousLesServices.filter((s) => s.id === monServiceId) : tousLesServices;
   useEffect(() => {
     if (services.length === 1 && serviceId !== services[0].id) setServiceId(services[0].id);
   }, [services]);

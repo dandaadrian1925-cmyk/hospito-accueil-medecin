@@ -23,7 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 const TONE_STATUT = { planifie: 'amber', confirme: 'blue', annule: 'red', termine: 'green' };
 const LABEL_STATUT = { planifie: 'Planifié', confirme: 'Confirmé', annule: 'Annulé', termine: 'Terminé' };
 
-function DemandesEnLigneSection({ etablissementId, actor, servicesAutorises }) {
+function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
   const [toutesLesDemandes, setToutesLesDemandes] = useState(null);
   const [medecins, setMedecins] = useState([]);
   const [demandeEnCours, setDemandeEnCours] = useState(null);
@@ -41,12 +41,11 @@ function DemandesEnLigneSection({ etablissementId, actor, servicesAutorises }) {
 
   // #nouveau (demande utilisateur, "l'accueil en charge du service choisi et
   // pas les autres accueils voit ma demande") : listenDemandesEnAttente ne
-  // filtre que par établissement — un accueil restreint à certains services
-  // (servicesAutorises, réglé depuis hospito-admin) ne doit voir QUE les
-  // demandes de CES services-là. Filtrage client, même principe que
-  // BilletsSessionPage.jsx (tableau vide/absent = généraliste, voit tout).
-  const demandes = servicesAutorises?.length
-    ? (toutesLesDemandes?.filter((d) => d.serviceId && servicesAutorises.includes(d.serviceId)) ?? null)
+  // filtre que par établissement — un accueil ne doit voir que les demandes
+  // de SON service (serviceId, réglé depuis hospito-admin). Filtrage client,
+  // même principe que BilletsSessionPage.jsx.
+  const demandes = monServiceId
+    ? (toutesLesDemandes?.filter((d) => d.serviceId === monServiceId) ?? null)
     : toutesLesDemandes;
 
   useEffect(() => {
@@ -188,10 +187,10 @@ export default function RendezVousPage() {
     return listenServices(etablissementId, (all) => setServicesActifs(all.filter((s) => s.actif)));
   }, [etablissementId]);
 
-  // Même restriction que Billet de session : un accueil limité à certains
-  // services ne doit pouvoir créer un RDV au guichet que pour CES services.
-  const restriction = userProfile?.servicesAutorises;
-  const services = restriction?.length ? servicesActifs.filter((s) => restriction.includes(s.id)) : servicesActifs;
+  // Même logique que Billet de session : un accueil ne peut créer un RDV au
+  // guichet que pour SON service (serviceId, toujours renseigné).
+  const monServiceId = userProfile?.serviceId;
+  const services = monServiceId ? servicesActifs.filter((s) => s.id === monServiceId) : servicesActifs;
   useEffect(() => {
     if (services.length === 1 && form.serviceId !== services[0].id) setForm((f) => ({ ...f, serviceId: services[0].id }));
   }, [services]);
@@ -258,7 +257,7 @@ export default function RendezVousPage() {
 
       <DataTable columns={columns} rows={pagination.rows} loading={pagination.loading} emptyTitle="Aucun rendez-vous" pagination={pagination} />
 
-      <DemandesEnLigneSection etablissementId={etablissementId} actor={actor} servicesAutorises={restriction} />
+      <DemandesEnLigneSection etablissementId={etablissementId} actor={actor} monServiceId={monServiceId} />
 
       <Dialog open={dialogOuvert} onOpenChange={setDialogOuvert}>
         <DialogContent>

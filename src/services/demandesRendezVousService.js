@@ -53,10 +53,9 @@ export const listerMedecins = async (etablissementId) => {
 
 // #nouveau (demande utilisateur, "billet de session lié à UN médecin
 // précis") : même requête que listerMedecins, filtrée en plus sur le service
-// (affiliations.serviceId, le service RÉEL du médecin — cf. hospito-admin,
-// champ singulier distinct de servicesAutorises qui, lui, ne concerne que
-// l'accueil). Utilisé par BilletsSessionPage pour proposer, à la création
-// d'un billet, uniquement les médecins de CE service précis.
+// (affiliations.serviceId, le service RÉEL du médecin). Utilisé par
+// BilletsSessionPage pour proposer, à la création d'un billet, uniquement
+// les médecins de CE service précis.
 export const listerMedecinsDuService = async (etablissementId, serviceId) => {
   const snap = await getDocs(query(collection(db, 'affiliations'), where('etablissementId', '==', etablissementId), where('actif', '==', true)));
   const affiliations = snap.docs.map((d) => d.data()).filter((a) => a.role === 'medecin' && a.serviceId === serviceId);

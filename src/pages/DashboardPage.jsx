@@ -11,11 +11,10 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const [services, setServices] = useState([]);
 
-  // Un accueil restreint à UN SEUL service (servicesAutorises, réglé depuis
-  // hospito-admin) n'a plus besoin de choisir son service nulle part dans
-  // cette app — le tableau de bord l'affiche directement, en clair.
-  const restriction = userProfile?.servicesAutorises;
-  const monServiceId = restriction?.length === 1 ? restriction[0] : null;
+  // Chaque compte accueil gère toujours exactement un service (serviceId,
+  // réglé depuis hospito-admin) — le tableau de bord l'affiche directement,
+  // en clair, jamais de choix à faire ici.
+  const monServiceId = userProfile?.serviceId || null;
 
   useEffect(() => {
     if (!monServiceId || !etablissementId) return;
