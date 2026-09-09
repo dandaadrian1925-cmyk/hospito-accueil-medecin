@@ -3,6 +3,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { logAction } from './auditService';
+import { getSettings } from './settingsService';
 
 // Billet de session — un par passage à l'accueil (§ parcours patient réel).
 // Le "coupon" décrit par l'utilisateur EST la facture elle-même : si un tarif
@@ -24,19 +25,22 @@ export const listenBilletsDuJour = (etablissementId, callback) => {
   return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
 };
 
-// #nouveau (demande utilisateur, "empêcher un billet en double tant que le
-// dernier n'a pas expiré") : un billet "expire" à minuit (même borne que
-// listenBilletsDuJour) ou dès qu'il passe à 'consulte' — avant ça, il reste
-// un passage actif pour ce patient, pas la peine (et source de confusion en
-// file d'attente) d'en recréer un second.
+// #évolué (demande utilisateur, "durée de validité d'un billet configurable
+// par le sysadmin dans les paramètres métiers, 14 jours par défaut") : un
+// billet reste actif — bloquant la création d'un second pour ce même
+// patient — pendant `dureeValiditeBilletJours` (settings/{etablissementId},
+// Paramètres métiers), pas seulement jusqu'à minuit comme avant, ou dès
+// qu'il passe à 'consulte'. Le nom de la fonction ("DuJour") reste pour ne
+// pas casser les appelants existants, mais la fenêtre réelle est désormais
+// paramétrable.
 export const trouverBilletActifDuJour = async (patientId, etablissementId) => {
-  const debut = new Date();
-  debut.setHours(0, 0, 0, 0);
+  const { dureeValiditeBilletJours } = await getSettings(etablissementId);
+  const seuil = new Date(Date.now() - dureeValiditeBilletJours * 24 * 3600 * 1000);
   const snap = await getDocs(query(
     collection(db, 'billets_session'),
     where('etablissementId', '==', etablissementId),
     where('patientId', '==', patientId),
-    where('createdAt', '>=', Timestamp.fromDate(debut)),
+    where('createdAt', '>=', Timestamp.fromDate(seuil)),
   ));
   const actif = snap.docs.map((d) => ({ id: d.id, ...d.data() })).find((b) => b.statut !== 'consulte');
   return actif || null;

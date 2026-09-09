@@ -23,7 +23,7 @@ const initPushNative = async (userId) => {
       await updateDoc(doc(db, 'users', userId), { fcmTokens: arrayUnion(token.value) });
     });
     await PushNotifications.addListener('pushNotificationReceived', (notification) => {
-      const titre = notification.title || 'MAKET';
+      const titre = notification.title || 'HostoConnect';
       const link = notification.data?.link;
       toast(titre, link ? { icon: '🔔', onClick: () => { window.location.href = lienInterneSur(link); } } : { icon: '🔔' });
     });
@@ -58,7 +58,7 @@ export const initPush = async (userId) => {
     await updateDoc(doc(db, 'users', userId), { fcmTokens: arrayUnion(token) });
 
     onMessage(messaging, (payload) => {
-      const titre = payload.notification?.title || 'MAKET';
+      const titre = payload.notification?.title || 'HostoConnect';
       const link = payload.fcmOptions?.link || payload.data?.link;
       toast(titre, link ? { icon: '🔔', onClick: () => { window.location.href = lienInterneSur(link); } } : { icon: '🔔' });
     });
