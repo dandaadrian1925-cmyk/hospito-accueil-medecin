@@ -41,6 +41,12 @@ export default function PlanningPage() {
   const peutEcrire = hasPermission(userProfile, 'planning', 'write');
   const actor = { uid: user.uid, email: user.email };
   const monService = userProfile?.service || null;
+  // #bug (corrigé, "les spécialistes sont directement assignés à des
+  // services") : comparait auparavant des CHAÎNES (m.service === monService)
+  // — un accent, une casse ou un service renommé cassait silencieusement le
+  // filtre. serviceId référence un vrai document `services/{id}`, jamais un
+  // texte libre (cf. hospito-admin, même modèle).
+  const monServiceId = userProfile?.serviceId || null;
 
   const [planning, setPlanning] = useState(null);
   const [medecins, setMedecins] = useState([]);
@@ -59,15 +65,15 @@ export default function PlanningPage() {
   // Ne propose par défaut que les médecins de SA spécialité — un accueil sans
   // service précisé (compte non scopé) continue de voir tout le monde.
   const medecinsDeMonService = useMemo(() => {
-    if (!monService) return medecins;
-    const filtres = medecins.filter((m) => m.service === monService);
+    if (!monServiceId) return medecins;
+    const filtres = medecins.filter((m) => m.serviceId === monServiceId);
     return filtres.length ? filtres : medecins;
-  }, [medecins, monService]);
+  }, [medecins, monServiceId]);
 
   const planningAffiche = useMemo(() => {
-    if (!monService) return planning || [];
-    return (planning || []).filter((c) => !c.serviceNom || c.serviceNom === monService);
-  }, [planning, monService]);
+    if (!monServiceId) return planning || [];
+    return (planning || []).filter((c) => !c.serviceId || c.serviceId === monServiceId);
+  }, [planning, monServiceId]);
 
   const parJour = useMemo(() => {
     const groupes = {};
@@ -75,13 +81,8 @@ export default function PlanningPage() {
     return Object.entries(groupes).sort(([a], [b]) => a.localeCompare(b));
   }, [planningAffiche]);
 
-  const serviceIdDeMonService = useMemo(
-    () => services.find((s) => s.nom === monService)?.id || '',
-    [services, monService],
-  );
-
   const ouvrirCreation = () => {
-    setForm({ personnelUid: '', serviceId: serviceIdDeMonService, date: aujourdHui(), creneau: 'matin' });
+    setForm({ personnelUid: '', serviceId: monServiceId || '', date: aujourdHui(), creneau: 'matin' });
     setDialogOuvert(true);
   };
 

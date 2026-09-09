@@ -50,7 +50,10 @@ export const listerMedecinsActifs = async (etablissementId) => {
     const usersSnap = await getDocs(query(collection(db, 'users'), where(documentId(), 'in', chunk)));
     usersSnap.docs.forEach((d) => { profils[d.id] = d.data(); });
   }
-  return affiliations.map((a) => ({ uid: a.userId, nom: profils[a.userId]?.displayName || a.userId, service: a.service || null }));
+  return affiliations.map((a) => ({
+    uid: a.userId, nom: profils[a.userId]?.displayName || a.userId,
+    serviceId: a.serviceId || null, service: a.service || null,
+  }));
 };
 
 // Lecture seule, pour proposer à la confirmation d'une demande de RDV les
