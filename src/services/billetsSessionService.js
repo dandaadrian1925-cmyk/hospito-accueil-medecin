@@ -74,6 +74,10 @@ export const creerBillet = async ({ patientId, patientNom, serviceId, serviceNom
     const factureRef = doc(collection(db, 'factures'));
     batch.set(factureRef, {
       etablissementId, patientUid: null, patientNom,
+      // #nouveau (demande utilisateur, "Facturation filtrée par service géré") :
+      // serviceId/serviceNom déjà disponibles ici (paramètres de cette
+      // fonction), simplement jamais écrits sur la facture jusqu'ici.
+      serviceId, serviceNom,
       libelle: `Consultation — ${serviceNom}`, montant: tarif.montant,
       statut: 'en_attente', billetSessionId: billetRef.id,
       creePar: actor?.uid || null, createdAt: serverTimestamp(),
