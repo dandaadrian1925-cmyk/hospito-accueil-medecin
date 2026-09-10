@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Ticket, Activity } from 'lucide-react';
+import { Ticket, Activity, Search, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getDocs } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
@@ -22,6 +22,9 @@ const LABEL_STATUT = { a_payer: 'À payer', pret: 'Prêt pour consultation', con
 const TONE_STATUT = { a_payer: 'amber', pret: 'green', consulte: 'gray' };
 const PARAMETRES_VIDE = { temperature: '', tension: '', poids: '', pouls: '' };
 
+// Insensible aux accents/casse — "Ndongo" doit retrouver "N'Dongo" ou "NDONGO".
+const normaliser = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
 export default function BilletsSessionPage() {
   const { user, userProfile, etablissementId } = useAuth();
   const actor = { uid: user.uid, email: user.email };
@@ -29,7 +32,9 @@ export default function BilletsSessionPage() {
   const [patients, setPatients] = useState([]);
   const [tousLesServices, setTousLesServices] = useState([]);
   const [billets, setBillets] = useState(null);
-  const [patientId, setPatientId] = useState('');
+  const [patientSelectionne, setPatientSelectionne] = useState(null);
+  const [rechercheNom, setRechercheNom] = useState('');
+  const [rechercheNaissance, setRechercheNaissance] = useState('');
   const [serviceId, setServiceId] = useState('');
   const [medecins, setMedecins] = useState([]);
   const [medecinId, setMedecinId] = useState('');
@@ -54,6 +59,19 @@ export default function BilletsSessionPage() {
   }, [services]);
   useEffect(() => listenBilletsDuJour(etablissementId, setBillets), [etablissementId]);
 
+  // #nouveau (demande utilisateur, "juste taper son nom complet et sa date de
+  // naissance" plutôt que la liste complète des patients de l'établissement,
+  // qui peut être longue) : suggestions affichées seulement à partir de 2
+  // caractères tapés, jamais la liste entière par défaut.
+  const suggestionsPatients = useMemo(() => {
+    const nomCherche = normaliser(rechercheNom);
+    if (nomCherche.length < 2) return [];
+    return patients
+      .filter((p) => normaliser(`${p.prenom} ${p.nom}`).includes(nomCherche))
+      .filter((p) => !rechercheNaissance || p.dateNaissance === rechercheNaissance)
+      .slice(0, 8);
+  }, [patients, rechercheNom, rechercheNaissance]);
+
   // #nouveau (demande utilisateur, "billet lié à UN médecin précis") :
   // proposé UNE FOIS le service choisi, jamais obligatoire (un billet sans
   // médecin reste visible par tout le service, comportement historique).
@@ -64,15 +82,14 @@ export default function BilletsSessionPage() {
   }, [serviceId, etablissementId]);
 
   const creer = async () => {
-    const patient = patients.find((p) => p.id === patientId);
     const service = services.find((s) => s.id === serviceId);
     const medecin = medecins.find((m) => m.uid === medecinId);
-    if (!patient || !service) { toast.error('Patient et service requis'); return; }
+    if (!patientSelectionne || !service) { toast.error('Patient et service requis'); return; }
     setCreation(true);
     try {
       const { statut } = await creerBillet(
         {
-          patientId: patient.id, patientNom: `${patient.prenom} ${patient.nom}`, serviceId: service.id, serviceNom: service.nom,
+          patientId: patientSelectionne.id, patientNom: `${patientSelectionne.prenom} ${patientSelectionne.nom}`, serviceId: service.id, serviceNom: service.nom,
           medecinId: medecin?.uid, medecinNom: medecin?.nom,
         },
         etablissementId, actor,
@@ -82,7 +99,9 @@ export default function BilletsSessionPage() {
       } else {
         toast.success('Billet prêt — vous pouvez saisir les paramètres');
       }
-      setPatientId('');
+      setPatientSelectionne(null);
+      setRechercheNom('');
+      setRechercheNaissance('');
       setServiceId('');
     } catch (e) {
       toast.error(e.message === 'BILLET_NON_EXPIRE'
@@ -115,7 +134,7 @@ export default function BilletsSessionPage() {
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground flex items-center gap-2">
-          <Ticket size={22} className="text-primary" /> Billet de session
+          <Ticket size={22} className="text-primary" /> Billet de consultation
         </h1>
         <p className="text-muted-foreground mt-1">
           Check-in d'un patient qui se présente — si le service choisi a un tarif de consultation, une facture est créée automatiquement.
@@ -123,31 +142,58 @@ export default function BilletsSessionPage() {
       </div>
 
       <div className="glass-card-elevated p-4 space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label>Patient</Label>
-            <Select value={patientId} onValueChange={setPatientId}>
-              <SelectTrigger><SelectValue placeholder="Sélectionner un patient" /></SelectTrigger>
+        <div className="space-y-1.5">
+          <Label>Patient</Label>
+          {patientSelectionne ? (
+            <div className="h-10 px-3 flex items-center justify-between rounded-md border border-input bg-secondary/40 text-sm text-foreground">
+              <span className="font-medium">{patientSelectionne.prenom} {patientSelectionne.nom}{patientSelectionne.dateNaissance ? ` · né(e) le ${new Date(`${patientSelectionne.dateNaissance}T00:00:00`).toLocaleDateString('fr-FR')}` : ''}</span>
+              <button type="button" onClick={() => setPatientSelectionne(null)} className="text-muted-foreground hover:text-foreground">
+                <X size={15} />
+              </button>
+            </div>
+          ) : (
+            <div className="relative">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="relative">
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input className="pl-8" placeholder="Nom complet du patient" value={rechercheNom} onChange={(e) => setRechercheNom(e.target.value)} />
+                </div>
+                <Input type="date" placeholder="Date de naissance" value={rechercheNaissance} onChange={(e) => setRechercheNaissance(e.target.value)} />
+              </div>
+              {rechercheNom.trim().length >= 2 && (
+                <div className="absolute z-10 mt-1 w-full glass-card-elevated max-h-56 overflow-y-auto">
+                  {suggestionsPatients.length === 0 ? (
+                    <p className="p-3 text-sm text-muted-foreground">Aucun patient ne correspond.</p>
+                  ) : suggestionsPatients.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => { setPatientSelectionne(p); setRechercheNom(''); setRechercheNaissance(''); }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-secondary/60 border-b border-border/50 last:border-0"
+                    >
+                      <span className="font-medium text-foreground">{p.prenom} {p.nom}</span>
+                      {p.dateNaissance && <span className="text-muted-foreground"> · né(e) le {new Date(`${p.dateNaissance}T00:00:00`).toLocaleDateString('fr-FR')}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          <Label>Service</Label>
+          {services.length === 1 ? (
+            <div className="h-10 px-3 flex items-center rounded-md border border-input bg-secondary/40 text-sm text-foreground">
+              {services[0].nom}
+            </div>
+          ) : (
+            <Select value={serviceId} onValueChange={setServiceId}>
+              <SelectTrigger><SelectValue placeholder="Sélectionner un service" /></SelectTrigger>
               <SelectContent>
-                {patients.map((p) => <SelectItem key={p.id} value={p.id}>{p.prenom} {p.nom}</SelectItem>)}
+                {services.map((s) => <SelectItem key={s.id} value={s.id}>{s.nom}</SelectItem>)}
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Service</Label>
-            {services.length === 1 ? (
-              <div className="h-10 px-3 flex items-center rounded-md border border-input bg-secondary/40 text-sm text-foreground">
-                {services[0].nom}
-              </div>
-            ) : (
-              <Select value={serviceId} onValueChange={setServiceId}>
-                <SelectTrigger><SelectValue placeholder="Sélectionner un service" /></SelectTrigger>
-                <SelectContent>
-                  {services.map((s) => <SelectItem key={s.id} value={s.id}>{s.nom}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
+          )}
         </div>
         {!!serviceId && (
           <div className="space-y-1.5">

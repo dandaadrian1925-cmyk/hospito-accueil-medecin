@@ -5,7 +5,7 @@ import { UserPlus, CalendarClock, HeartHandshake, CreditCard, Clock, Ticket } fr
 // #retiré (demande utilisateur) : "Disponibilité des lits" (suivi lit-par-lit
 // abandonné, cf. hospito-admin) et "Urgences" (module retiré de cette app).
 export const HOSPITAL_MODULES = [
-  { path: 'billets', label: 'Billet de session', icon: Ticket, module: null, phase: 'Phase 6' },
+  { path: 'billets', label: 'Billet de consultation', icon: Ticket, module: null, phase: 'Phase 6' },
   { path: 'admissions', label: 'Admissions', icon: UserPlus, module: null, phase: 'Phase 1' },
   { path: 'rendez-vous', label: 'Rendez-vous', icon: CalendarClock, module: null, phase: 'Phase 1' },
   { path: 'visites', label: 'Visites', icon: HeartHandshake, module: null, phase: 'Phase 5' },

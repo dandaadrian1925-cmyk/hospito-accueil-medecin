@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { LayoutDashboard, MessageCircle, Bell, UserCircle, ChevronLeft, X, LogOut } from 'lucide-react';
 import { auth } from '../../firebase/config';
+import { useAuth } from '../../context/AuthContext';
 import { HOSPITAL_MODULES } from '../../lib/hospitalModules';
 import ConfirmDialog from '../common/ConfirmDialog';
 
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
 ];
 
 export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
+  const { userProfile } = useAuth();
   const [confirmLogout, setConfirmLogout] = useState(false);
 
   return (
@@ -40,9 +42,18 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
     >
       <div className="flex items-center gap-3 px-5 h-16 border-b border-sidebar-border">
         {!collapsed && (
-          <span className="font-display text-lg font-bold text-sidebar-primary-foreground whitespace-nowrap">
-            HostoConnect <span className="text-sidebar-primary">Accueil</span>
-          </span>
+          <div className="leading-tight overflow-hidden">
+            <span className="font-display text-lg font-bold text-sidebar-primary-foreground whitespace-nowrap">
+              HostoConnect <span className="text-sidebar-primary">Accueil</span>
+            </span>
+            {/* #nouveau (demande utilisateur, "le nom du service dont c'est
+                l'accueil affiché dans le même design que Accueil") : chaque
+                compte accueil gère toujours exactement un service — l'afficher
+                ici évite d'avoir à ouvrir le Tableau de bord pour le savoir. */}
+            {userProfile?.service && (
+              <p className="text-xs font-semibold text-sidebar-primary truncate">{userProfile.service}</p>
+            )}
+          </div>
         )}
         <button onClick={() => setCollapsed(!collapsed)} className="hidden lg:flex ml-auto p-1.5 rounded-lg hover:bg-sidebar-accent transition-colors">
           <ChevronLeft size={16} className={`transition-transform ${collapsed ? 'rotate-180' : ''}`} />
