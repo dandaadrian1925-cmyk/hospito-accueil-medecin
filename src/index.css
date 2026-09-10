@@ -15,8 +15,12 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 30% 10%;
 
-    --primary: 46 100% 51%;
-    --primary-foreground: 222 40% 12%;
+    /* Couleur de marque HostoConnect (extraite du logo, déjà appliquée à
+       hospito-patient/hospito-admin) — teal #2FB4A0 / navy #174858 — plutôt
+       qu'une couleur propre à cette app, pour une identité visuelle unifiée
+       sur tout le SGIH (demande utilisateur, "le même design que admin"). */
+    --primary: 171 59% 45%;
+    --primary-foreground: 0 0% 100%;
 
     --secondary: 222 30% 94%;
     --secondary-foreground: 222 40% 20%;
@@ -24,7 +28,7 @@
     --muted: 220 15% 95%;
     --muted-foreground: 222 10% 45%;
 
-    --accent: 28 92% 50%;
+    --accent: 171 55% 38%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
@@ -32,31 +36,31 @@
 
     --border: 222 20% 90%;
     --input: 222 20% 90%;
-    --ring: 46 100% 51%;
+    --ring: 171 59% 45%;
 
     --radius: 0.75rem;
 
-    --sidebar-background: 222 30% 10%;
-    --sidebar-foreground: 222 15% 85%;
-    --sidebar-primary: 46 100% 51%;
-    --sidebar-primary-foreground: 222 40% 12%;
-    --sidebar-accent: 222 25% 16%;
-    --sidebar-accent-foreground: 222 15% 90%;
-    --sidebar-border: 222 20% 18%;
-    --sidebar-ring: 46 100% 51%;
+    --sidebar-background: 195 55% 14%;
+    --sidebar-foreground: 195 15% 85%;
+    --sidebar-primary: 171 59% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 195 30% 20%;
+    --sidebar-accent-foreground: 195 15% 90%;
+    --sidebar-border: 195 25% 22%;
+    --sidebar-ring: 171 59% 45%;
 
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
-    --warning: 25 90% 48%;
+    --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
     --info: 199 89% 48%;
     --info-foreground: 0 0% 100%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(46, 100%, 51%), hsl(28, 92%, 50%));
-    --gradient-subtle: linear-gradient(135deg, hsl(46, 60%, 95%), hsl(28, 40%, 93%));
-    --shadow-card: 0 1px 3px 0 hsl(222 30% 10% / 0.04), 0 1px 2px -1px hsl(222 30% 10% / 0.04);
-    --shadow-elevated: 0 10px 25px -5px hsl(222 30% 10% / 0.08), 0 8px 10px -6px hsl(222 30% 10% / 0.04);
-    --shadow-glow: 0 0 20px hsl(46 100% 51% / 0.2);
+    --gradient-primary: linear-gradient(135deg, hsl(171, 59%, 45%), hsl(195, 55%, 25%));
+    --gradient-subtle: linear-gradient(135deg, hsl(171, 30%, 94%), hsl(195, 25%, 92%));
+    --shadow-card: 0 1px 3px 0 hsl(195 30% 10% / 0.04), 0 1px 2px -1px hsl(195 30% 10% / 0.04);
+    --shadow-elevated: 0 10px 25px -5px hsl(195 30% 10% / 0.08), 0 8px 10px -6px hsl(195 30% 10% / 0.04);
+    --shadow-glow: 0 0 20px hsl(171 59% 45% / 0.15);
   }
 }
 
