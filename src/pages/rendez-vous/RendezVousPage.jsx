@@ -20,8 +20,8 @@ import { Label } from '../../components/ui/label';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
 
-const TONE_STATUT = { planifie: 'amber', confirme: 'blue', annule: 'red', termine: 'green' };
-const LABEL_STATUT = { planifie: 'Planifié', confirme: 'Confirmé', annule: 'Annulé', termine: 'Terminé' };
+const TONE_STATUT = { planifie: 'amber', confirme: 'blue', annule: 'red', termine: 'green', absent: 'red' };
+const LABEL_STATUT = { planifie: 'Planifié', confirme: 'Confirmé', annule: 'Annulé', termine: 'Terminé', absent: 'Non honoré' };
 
 function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
   const [toutesLesDemandes, setToutesLesDemandes] = useState(null);

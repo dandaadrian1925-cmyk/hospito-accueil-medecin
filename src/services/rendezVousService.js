@@ -5,7 +5,11 @@ import { db } from '../firebase/config';
 import { logAction } from './auditService';
 
 // Rendez-vous et consultations (§4.4) — scopés par établissement.
-export const STATUTS_RDV = ['planifie', 'confirme', 'annule', 'termine'];
+// 'absent' : basculé automatiquement par la tâche planifiée serveur
+// (hospito-taches-planifiees, action no_show_rdv) pour tout RDV dont l'heure
+// est passée sans changement de statut — laissé aussi choisissable
+// manuellement ici, un membre du personnel peut le constater avant le délai.
+export const STATUTS_RDV = ['planifie', 'confirme', 'annule', 'termine', 'absent'];
 
 export const buildRendezVousQuery = (etablissementId) =>
   query(collection(db, 'rendez_vous'), where('etablissementId', '==', etablissementId), orderBy('dateHeure', 'asc'));
