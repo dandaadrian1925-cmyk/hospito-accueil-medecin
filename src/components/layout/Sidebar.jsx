@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { LayoutDashboard, MessageCircle, Bell, UserCircle, ChevronLeft, X, LogOut } from 'lucide-react';
 import { auth } from '../../firebase/config';
 import { useAuth } from '../../context/AuthContext';
 import { HOSPITAL_MODULES } from '../../lib/hospitalModules';
+import { listenServices } from '../../services/litsService';
 import ConfirmDialog from '../common/ConfirmDialog';
 
 // HOSPITAL_MODULES est une liste partagée (dupliquée dans chaque app) — cette
@@ -18,17 +19,40 @@ const MODULES_DANS_UNE_AUTRE_APP = new Set([
   'dossiers', 'prescriptions', 'bloc-operatoire', 'laboratoire-imagerie', 'pharmacie', // hospito-medecin
 ]);
 
-const NAV_ITEMS = [
-  { to: '/', label: 'Tableau de bord', icon: LayoutDashboard, end: true },
-  ...HOSPITAL_MODULES.filter((m) => !MODULES_DANS_UNE_AUTRE_APP.has(m.path)).map((m) => ({ to: `/${m.path}`, label: m.label, icon: m.icon })),
-  { to: '/messages', label: 'Communication interne', icon: MessageCircle },
-  { to: '/notifications', label: 'Notifications', icon: Bell },
-  { to: '/profil', label: 'Profil', icon: UserCircle },
-];
+// #nouveau (demande utilisateur, "quels services ont besoin de Admissions et
+// Visites") : ces deux modules n'ont de sens que pour un service qui héberge
+// réellement des patients (type 'hospitalisation', cf. servicesService.js/
+// TYPES_SERVICE côté hospito-admin — pas un nouveau champ, la classification
+// existait déjà). "Visites" dépend d'ailleurs directement d'Admissions
+// (visitesService.js exige un admissionId). Un service sans `type` renseigné
+// (donnée existante avant ce champ) continue de TOUT afficher — jamais masqué
+// par défaut, seul un type explicitement différent de 'hospitalisation' cache
+// ces deux entrées.
+const MODULES_HOSPITALISATION_UNIQUEMENT = new Set(['admissions', 'visites']);
 
 export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
-  const { userProfile } = useAuth();
+  const { userProfile, etablissementId } = useAuth();
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [tousLesServices, setTousLesServices] = useState([]);
+
+  useEffect(() => {
+    if (!etablissementId) return;
+    return listenServices(etablissementId, setTousLesServices);
+  }, [etablissementId]);
+
+  const monService = tousLesServices.find((s) => s.id === userProfile?.serviceId);
+  const hospitalise = !monService?.type || monService.type === 'hospitalisation';
+
+  const NAV_ITEMS = [
+    { to: '/', label: 'Tableau de bord', icon: LayoutDashboard, end: true },
+    ...HOSPITAL_MODULES
+      .filter((m) => !MODULES_DANS_UNE_AUTRE_APP.has(m.path))
+      .filter((m) => hospitalise || !MODULES_HOSPITALISATION_UNIQUEMENT.has(m.path))
+      .map((m) => ({ to: `/${m.path}`, label: m.label, icon: m.icon })),
+    { to: '/messages', label: 'Communication interne', icon: MessageCircle },
+    { to: '/notifications', label: 'Notifications', icon: Bell },
+    { to: '/profil', label: 'Profil', icon: UserCircle },
+  ];
 
   return (
     <aside

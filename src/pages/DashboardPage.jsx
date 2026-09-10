@@ -1,15 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2 } from 'lucide-react';
+import { Building2, Ticket, CalendarClock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { roleLabel } from '../lib/permissions';
 import { HOSPITAL_MODULES } from '../lib/hospitalModules';
 import { listenServices } from '../services/litsService';
+import { listenBilletsDuJour } from '../services/billetsSessionService';
+import { buildRendezVousQuery } from '../services/rendezVousService';
+import { onSnapshot } from 'firebase/firestore';
+import StatCard from '../components/common/StatCard';
 
+// #refonte (demande utilisateur, "le design du tableau de bord ne me plaît
+// vraiment pas") : reprend exactement la structure de hospito-admin
+// (rangée de StatCard, puis grille de modules en cartes avec bouton "Ouvrir")
+// au lieu de la simple liste de boutons-pilules qu'il y avait ici avant.
 export default function DashboardPage() {
   const { userProfile, etablissementId } = useAuth();
   const navigate = useNavigate();
   const [services, setServices] = useState([]);
+  const [billetsDuJour, setBilletsDuJour] = useState(null);
+  const [rdvDuJour, setRdvDuJour] = useState(null);
 
   // Chaque compte accueil gère toujours exactement un service (serviceId,
   // réglé depuis hospito-admin) — le tableau de bord l'affiche directement,
@@ -21,12 +31,30 @@ export default function DashboardPage() {
     return listenServices(etablissementId, setServices);
   }, [monServiceId, etablissementId]);
 
-  const monService = services.find((s) => s.id === monServiceId);
+  useEffect(() => {
+    if (!etablissementId) return;
+    return listenBilletsDuJour(etablissementId, setBilletsDuJour);
+  }, [etablissementId]);
 
-  const parPhase = HOSPITAL_MODULES.reduce((acc, m) => {
+  useEffect(() => {
+    if (!etablissementId) return;
+    return onSnapshot(buildRendezVousQuery(etablissementId), (snap) => setRdvDuJour(snap.docs.map((d) => d.data())));
+  }, [etablissementId]);
+
+  const monService = services.find((s) => s.id === monServiceId);
+  // #nouveau — même logique que Sidebar.jsx : Admissions/Visites n'ont de
+  // sens que pour un service qui héberge réellement des patients.
+  const hospitalise = !monService?.type || monService.type === 'hospitalisation';
+  const modulesVisibles = HOSPITAL_MODULES.filter((m) => hospitalise || !['admissions', 'visites'].includes(m.path));
+
+  const parPhase = modulesVisibles.reduce((acc, m) => {
     (acc[m.phase] ||= []).push(m);
     return acc;
   }, {});
+
+  const billetsMonService = monServiceId ? (billetsDuJour || []).filter((b) => b.serviceId === monServiceId) : billetsDuJour;
+  const aujourdHui = new Date().toISOString().slice(0, 10);
+  const rdvAujourdhui = (rdvDuJour || []).filter((r) => r.dateHeure?.toDate && r.dateHeure.toDate().toISOString().slice(0, 10) === aujourdHui);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -37,33 +65,33 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {monServiceId && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-card border border-border">
-          <div className="w-11 h-11 rounded-xl bg-secondary text-primary flex items-center justify-center flex-shrink-0">
-            <Building2 size={20} />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Vous gérez</p>
-            <p className="font-display font-semibold text-foreground">{monService?.nom || '…'}</p>
-          </div>
-        </div>
-      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {monService && (
+          <StatCard label="Vous gérez" value={monService.nom} icon={Building2} onClick={() => navigate('/profil')} />
+        )}
+        <StatCard label="Billets aujourd'hui" value={billetsMonService === null ? '…' : billetsMonService.length} icon={Ticket} onClick={() => navigate('/billets')} />
+        <StatCard label="Rendez-vous aujourd'hui" value={rdvDuJour === null ? '…' : rdvAujourdhui.length} icon={CalendarClock} onClick={() => navigate('/rendez-vous')} />
+      </div>
 
       <div className="space-y-6">
         <h2 className="font-display text-lg font-semibold text-foreground">Modules</h2>
         {Object.entries(parPhase).map(([phase, modules]) => (
-          <div key={phase}>
-            <h3 className="text-sm font-semibold text-muted-foreground mb-2">{phase}</h3>
-            <div className="flex flex-wrap gap-2">
+          <div key={phase} className="space-y-2">
+            <h3 className="text-sm font-semibold text-muted-foreground">{phase}</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               {modules.map((m) => (
-                <button
-                  key={m.path}
-                  onClick={() => navigate(`/${m.path}`)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium
-                    bg-card border border-border text-foreground hover:bg-accent transition-colors"
-                >
-                  <m.icon size={15} /> {m.label}
-                </button>
+                <div key={m.path} className="glass-card-elevated p-4 flex flex-col items-center text-center gap-2">
+                  <div className="w-11 h-11 rounded-xl bg-secondary text-primary flex items-center justify-center">
+                    <m.icon size={20} />
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">{m.label}</p>
+                  <button
+                    onClick={() => navigate(`/${m.path}`)}
+                    className="mt-1 px-3 py-1 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                  >
+                    Ouvrir
+                  </button>
+                </div>
               ))}
             </div>
           </div>
