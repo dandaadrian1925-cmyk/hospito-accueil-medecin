@@ -7,7 +7,7 @@ import { buildPatientsQuery } from '../../services/patientsService';
 import { listenServices } from '../../services/litsService';
 import { STATUTS_RDV, buildRendezVousQuery, creerRendezVous, changerStatutRendezVous } from '../../services/rendezVousService';
 import {
-  listenDemandesEnAttente, confirmerDemande, refuserDemande, listerMedecins,
+  listenDemandesEnAttente, confirmerDemande, refuserDemande, listerMedecinsDuService,
 } from '../../services/demandesRendezVousService';
 import { listerMedecinsDeGarde, creneauDepuisHeure } from '../../services/planningService';
 import { useFirestorePagination } from '../../hooks/useFirestorePagination';
@@ -37,7 +37,17 @@ function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
   const [medecinsDeGarde, setMedecinsDeGarde] = useState(null);
 
   useEffect(() => listenDemandesEnAttente(etablissementId, setToutesLesDemandes), [etablissementId]);
-  useEffect(() => { listerMedecins(etablissementId).then(setMedecins).catch(() => setMedecins([])); }, [etablissementId]);
+
+  // #corrigé (demande utilisateur, "pour une consultation d'ORL je vois les
+  // autres médecins") : listerMedecins (retiré) proposait TOUS les médecins
+  // de l'établissement, toute spécialité confondue — le filtre "de garde"
+  // ci-dessous ne s'appliquait qu'une fois une date/heure saisie, et
+  // retombait sur la liste complète sinon. Scopé au service de LA DEMANDE en
+  // cours de confirmation, dès l'ouverture du dialogue.
+  useEffect(() => {
+    if (!demandeEnCours?.serviceId) { setMedecins([]); return; }
+    listerMedecinsDuService(etablissementId, demandeEnCours.serviceId).then(setMedecins).catch(() => setMedecins([]));
+  }, [etablissementId, demandeEnCours?.serviceId]);
 
   // #nouveau (demande utilisateur, "l'accueil en charge du service choisi et
   // pas les autres accueils voit ma demande") : listenDemandesEnAttente ne
