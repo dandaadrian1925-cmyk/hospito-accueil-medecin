@@ -42,18 +42,9 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
     >
       <div className="flex items-center gap-3 px-5 h-16 border-b border-sidebar-border">
         {!collapsed && (
-          <div className="leading-tight overflow-hidden">
-            <span className="font-display text-lg font-bold text-sidebar-primary-foreground whitespace-nowrap">
-              HostoConnect <span className="text-sidebar-primary">Accueil</span>
-            </span>
-            {/* #nouveau (demande utilisateur, "le nom du service dont c'est
-                l'accueil affiché dans le même design que Accueil") : chaque
-                compte accueil gère toujours exactement un service — l'afficher
-                ici évite d'avoir à ouvrir le Tableau de bord pour le savoir. */}
-            {userProfile?.service && (
-              <p className="text-xs font-semibold text-sidebar-primary truncate">{userProfile.service}</p>
-            )}
-          </div>
+          <span className="font-display text-lg font-bold text-sidebar-primary-foreground whitespace-nowrap">
+            HostoConnect <span className="text-sidebar-primary">Accueil</span>
+          </span>
         )}
         <button onClick={() => setCollapsed(!collapsed)} className="hidden lg:flex ml-auto p-1.5 rounded-lg hover:bg-sidebar-accent transition-colors">
           <ChevronLeft size={16} className={`transition-transform ${collapsed ? 'rotate-180' : ''}`} />
@@ -62,6 +53,20 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
           <X size={18} />
         </button>
       </div>
+
+      {/* #nouveau (demande utilisateur, "le nom du service... affiché dans
+          le même design que Accueil/Admin") : chaque compte accueil gère
+          toujours exactement un service — l'afficher ici évite d'avoir à
+          ouvrir le Tableau de bord pour le savoir. Bande à part (pas dans le
+          h-16 ci-dessus, qui doit garder EXACTEMENT la même hauteur que le
+          Topbar pour que les deux bordures s'alignent) — même couleur/police
+          que "Accueil" juste au-dessus.
+      */}
+      {!collapsed && userProfile?.service && (
+        <div className="px-5 py-2 border-b border-sidebar-border">
+          <p className="font-display text-sm font-bold text-sidebar-primary truncate">{userProfile.service}</p>
+        </div>
+      )}
 
       <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
         {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
