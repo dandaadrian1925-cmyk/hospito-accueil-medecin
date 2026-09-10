@@ -59,17 +59,16 @@ export default function BilletsSessionPage() {
   }, [services]);
   useEffect(() => listenBilletsDuJour(etablissementId, setBillets), [etablissementId]);
 
-  // #nouveau (demande utilisateur, "juste taper son nom complet et sa date de
-  // naissance" plutôt que la liste complète des patients de l'établissement,
-  // qui peut être longue) : suggestions affichées seulement à partir de 2
-  // caractères tapés, jamais la liste entière par défaut.
-  const suggestionsPatients = useMemo(() => {
+  // #nouveau (demande utilisateur, "la liste des patients mais avec la barre
+  // de recherche pour filtrer") : liste complète visible, filtrée en direct
+  // par nom et/ou date de naissance — pas un menu déroulant de tout
+  // l'établissement, mais pas non plus masquée tant qu'on n'a rien tapé.
+  const patientsFiltres = useMemo(() => {
     const nomCherche = normaliser(rechercheNom);
-    if (nomCherche.length < 2) return [];
     return patients
-      .filter((p) => normaliser(`${p.prenom} ${p.nom}`).includes(nomCherche))
+      .filter((p) => !nomCherche || normaliser(`${p.prenom} ${p.nom}`).includes(nomCherche))
       .filter((p) => !rechercheNaissance || p.dateNaissance === rechercheNaissance)
-      .slice(0, 8);
+      .sort((a, b) => `${a.prenom}${a.nom}`.localeCompare(`${b.prenom}${b.nom}`));
   }, [patients, rechercheNom, rechercheNaissance]);
 
   // #nouveau (demande utilisateur, "billet lié à UN médecin précis") :
@@ -152,31 +151,29 @@ export default function BilletsSessionPage() {
               </button>
             </div>
           ) : (
-            <div className="relative">
+            <div className="space-y-2">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="relative">
                   <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <Input className="pl-8" placeholder="Nom complet du patient" value={rechercheNom} onChange={(e) => setRechercheNom(e.target.value)} />
+                  <Input className="pl-8" placeholder="Filtrer par nom complet…" value={rechercheNom} onChange={(e) => setRechercheNom(e.target.value)} />
                 </div>
-                <Input type="date" placeholder="Date de naissance" value={rechercheNaissance} onChange={(e) => setRechercheNaissance(e.target.value)} />
+                <Input type="date" value={rechercheNaissance} onChange={(e) => setRechercheNaissance(e.target.value)} />
               </div>
-              {rechercheNom.trim().length >= 2 && (
-                <div className="absolute z-10 mt-1 w-full glass-card-elevated max-h-56 overflow-y-auto">
-                  {suggestionsPatients.length === 0 ? (
-                    <p className="p-3 text-sm text-muted-foreground">Aucun patient ne correspond.</p>
-                  ) : suggestionsPatients.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => { setPatientSelectionne(p); setRechercheNom(''); setRechercheNaissance(''); }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-secondary/60 border-b border-border/50 last:border-0"
-                    >
-                      <span className="font-medium text-foreground">{p.prenom} {p.nom}</span>
-                      {p.dateNaissance && <span className="text-muted-foreground"> · né(e) le {new Date(`${p.dateNaissance}T00:00:00`).toLocaleDateString('fr-FR')}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <div className="border border-border rounded-lg max-h-64 overflow-y-auto divide-y divide-border/50">
+                {patientsFiltres.length === 0 ? (
+                  <p className="p-3 text-sm text-muted-foreground">Aucun patient ne correspond.</p>
+                ) : patientsFiltres.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => { setPatientSelectionne(p); setRechercheNom(''); setRechercheNaissance(''); }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-secondary/60"
+                  >
+                    <span className="font-medium text-foreground">{p.prenom} {p.nom}</span>
+                    {p.dateNaissance && <span className="text-muted-foreground"> · né(e) le {new Date(`${p.dateNaissance}T00:00:00`).toLocaleDateString('fr-FR')}</span>}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
