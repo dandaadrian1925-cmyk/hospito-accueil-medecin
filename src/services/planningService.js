@@ -1,13 +1,18 @@
 import {
-  collection, doc, addDoc, deleteDoc, getDocs, query, where, orderBy, onSnapshot, documentId, serverTimestamp,
+  collection, getDocs, query, where, orderBy, onSnapshot, documentId,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { logAction } from './auditService';
 
-// Planning du personnel (Phase 2) — même collection/règles que hospito-admin
-// (cf. planningService.js là-bas), mais géré ici directement par l'accueil de
-// chaque spécialité : c'est lui qui connaît précisément quel médecin
-// travaille quel jour, pas un administrateur central.
+// Planning du personnel — LECTURE SEULE côté accueil depuis la refonte de
+// hospito-admin (vue hebdomadaire par service, plusieurs plages horaires/jour,
+// synthèse IA). #retiré (conflit détecté, écriture croisée) : cette page
+// écrivait auparavant directement ici (creerCreneau/supprimerCreneau, un
+// créneau à la fois), alors que hospito-admin réécrit désormais TOUT le
+// roster d'un jour en un coup (supprime puis recrée) — un accueil ajoutant un
+// créneau juste avant qu'un admin enregistre sa propre journée le voyait
+// silencieusement effacé. Un seul gestionnaire (hospito-admin), l'accueil
+// garde uniquement la consultation, dont il a réellement besoin pour confirmer
+// un rendez-vous en sachant qui est de garde.
 export const CRENEAUX = ['matin', 'apres-midi', 'nuit'];
 
 export const listenPlanning = (etablissementId, dateDebut, dateFin, callback) => {
@@ -19,21 +24,6 @@ export const listenPlanning = (etablissementId, dateDebut, dateFin, callback) =>
     orderBy('date', 'asc'),
   );
   return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
-};
-
-export const creerCreneau = async ({ etablissementId, personnelUid, personnelNom, serviceId, serviceNom, date, creneau }, actor) => {
-  if (!CRENEAUX.includes(creneau)) throw new Error('CRENEAU_INVALIDE');
-  const ref = await addDoc(collection(db, 'plannings'), {
-    etablissementId, personnelUid, personnelNom, serviceId: serviceId || null, serviceNom: serviceNom || null,
-    date, creneau, createdAt: serverTimestamp(), createdBy: actor.uid,
-  });
-  await logAction({ actor, etablissementId, action: 'planning.creer', targetType: 'planning', targetId: ref.id, details: { personnelUid, date, creneau } });
-  return ref.id;
-};
-
-export const supprimerCreneau = async (planningId, etablissementId, actor) => {
-  await deleteDoc(doc(db, 'plannings', planningId));
-  await logAction({ actor, etablissementId, action: 'planning.supprimer', targetType: 'planning', targetId: planningId });
 };
 
 // Uniquement les médecins (contrairement à listerPersonnelActif côté
