@@ -1,5 +1,5 @@
 import {
-  collection, doc, writeBatch, updateDoc, query, where, orderBy, onSnapshot, getDocs, serverTimestamp, Timestamp,
+  collection, doc, getDoc, writeBatch, updateDoc, query, where, orderBy, onSnapshot, getDocs, serverTimestamp, Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { logAction } from './auditService';
@@ -10,8 +10,13 @@ import { getSettings } from './settingsService';
 // existe pour le service choisi, elle est créée dans le MÊME writeBatch que
 // le billet, avec `billetSessionId` pour le lien — voir
 // hospito-admin/firestore.rules (factures.create, nouvelle branche accueil).
-// L'ABSENCE de tarif pour ce service = pas de barrière (billet 'pret' direct).
-export const STATUTS_BILLET = ['a_payer', 'pret', 'consulte'];
+// #corrigé (demande utilisateur, "on lui prend ses paramètres et dès que
+// c'est enregistré c'est marqué prêt chez l'accueil et chez le médecin") :
+// 'pret' (visible dans la file d'attente) n'est plus déclenché par le
+// paiement — seule la SAISIE DES PARAMÈTRES (saisirParametres ci-dessous)
+// fait passer un billet à 'pret'. 'arrive' = check-in fait (payé, ou aucun
+// tarif pour ce service) mais paramètres pas encore pris pour CETTE venue.
+export const STATUTS_BILLET = ['a_payer', 'arrive', 'pret', 'consulte'];
 
 export const listenBilletsDuJour = (etablissementId, callback) => {
   const debut = new Date();
@@ -121,7 +126,7 @@ export const creerBillet = async ({ patientId, patientNom, serviceId, serviceNom
   batch.set(billetRef, {
     etablissementId, patientId, patientNom, serviceId, serviceNom,
     medecinId: medecinId || null, medecinNom: medecinNom || null,
-    statut: tarif ? 'a_payer' : 'pret',
+    statut: tarif ? 'a_payer' : 'arrive',
     factureId: null, parametres: null, parametresAt: null,
     creePar: actor?.uid || null, consultePar: null, consulteAt: null,
     createdAt: serverTimestamp(),
@@ -147,10 +152,20 @@ export const creerBillet = async ({ patientId, patientNom, serviceId, serviceNom
     actor, etablissementId, action: 'billet_session.creer', targetType: 'billet_session', targetId: billetRef.id,
     details: { serviceNom, aPayer: !!tarif },
   });
-  return { billetId: billetRef.id, statut: tarif ? 'a_payer' : 'pret' };
+  return { billetId: billetRef.id, statut: tarif ? 'a_payer' : 'arrive' };
 };
 
+// #corrigé (demande utilisateur, "dès que c'est enregistré [les
+// paramètres] c'est marqué prêt") : c'est désormais CETTE fonction, pas le
+// paiement, qui fait passer le billet à 'pret' — sauf s'il est déjà
+// 'consulte' (le médecin a déjà vu ce patient pour cette venue, rouvrir les
+// paramètres ne doit pas le remettre dans la file d'attente).
 export const saisirParametres = async (billetId, parametres, etablissementId, actor) => {
-  await updateDoc(doc(db, 'billets_session', billetId), { parametres, parametresAt: serverTimestamp() });
+  const snap = await getDoc(doc(db, 'billets_session', billetId));
+  const dejaConsulte = snap.exists() && snap.data().statut === 'consulte';
+  await updateDoc(doc(db, 'billets_session', billetId), {
+    parametres, parametresAt: serverTimestamp(),
+    ...(dejaConsulte ? {} : { statut: 'pret' }),
+  });
   await logAction({ actor, etablissementId, action: 'billet_session.saisir_parametres', targetType: 'billet_session', targetId: billetId });
 };

@@ -18,8 +18,8 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../components/ui/select';
 
-const LABEL_STATUT = { a_payer: 'À payer', pret: 'Prêt pour consultation', consulte: 'Consulté' };
-const TONE_STATUT = { a_payer: 'amber', pret: 'green', consulte: 'gray' };
+const LABEL_STATUT = { a_payer: 'À payer', arrive: 'En attente des paramètres', pret: 'Prêt pour consultation', consulte: 'Consulté' };
+const TONE_STATUT = { a_payer: 'amber', arrive: 'blue', pret: 'green', consulte: 'gray' };
 const PARAMETRES_VIDE = { temperature: '', tension: '', poids: '', pouls: '' };
 
 // Insensible aux accents/casse — "Ndongo" doit retrouver "N'Dongo" ou "NDONGO".
@@ -96,7 +96,7 @@ export default function BilletsSessionPage() {
       if (statut === 'a_payer') {
         toast('Facture créée — orientez le patient vers Paiement au guichet', { icon: '🎫', duration: 6000 });
       } else {
-        toast.success('Billet prêt — vous pouvez saisir les paramètres');
+        toast.success('Billet enregistré — vous pouvez saisir les paramètres');
       }
       setPatientSelectionne(null);
       setRechercheNom('');

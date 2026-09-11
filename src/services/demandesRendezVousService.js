@@ -47,9 +47,20 @@ export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateH
     // — on le met à jour pour qu'il apparaisse dans la bonne file (cf.
     // billetsSessionService.js::listenFileAttente, hospito-medecin et
     // hospito-accueil-medecin, filtrées/triées sur ces mêmes champs).
+    // #corrigé (demande utilisateur, "on prend ses paramètres et dès que
+    // c'est enregistré c'est marqué prêt") : un billet trouvé encore 'pret'
+    // ou 'consulte' vient forcément d'UNE AUTRE venue (sa fenêtre de
+    // validité couvre plusieurs jours) — repasse à 'arrive' (paiement/passage
+    // déjà fait, paramètres pas encore pris POUR CE rendez-vous) et efface
+    // les anciens paramètres/traces de consultation, pour ne jamais laisser
+    // croire que ce nouveau rendez-vous est déjà prêt ou déjà vu. Un billet
+    // encore 'a_payer' reste 'a_payer' — le paiement doit toujours se faire
+    // avant l'entrée en file.
+    const dejaPayeOuVu = billet.statut !== 'a_payer';
     await updateDoc(doc(db, 'billets_session', billet.id), {
       medecinId: medecinId || null, medecinNom: medecinNom || null,
       dateHeure: Timestamp.fromDate(new Date(dateHeure)), demandeId,
+      ...(dejaPayeOuVu ? { statut: 'arrive', parametres: null, parametresAt: null, consultePar: null, consulteAt: null } : {}),
     });
   }
 

@@ -20,18 +20,22 @@ export const listenFacturesEnAttente = (etablissementId, callback) => {
 };
 
 // billetSessionId optionnel (§ billet de session) : quand la facture réglée
-// est le "coupon" d'un check-in, le paiement fait aussi passer le billet à
-// 'pret' — dans le MÊME writeBatch, jamais en deux écritures séparées
-// (même principe que le flip atomique côté serveur pour les paiements CamPay
-// d'examens, mais ici côté client puisqu'il n'y a pas de serveur impliqué
-// pour un encaissement espèces/preuve).
+// est le "coupon" d'un check-in, le paiement fait passer le billet à
+// 'arrive' (payé, en attente des paramètres) — dans le MÊME writeBatch,
+// jamais en deux écritures séparées (même principe que le flip atomique
+// côté serveur pour les paiements CamPay d'examens, mais ici côté client
+// puisqu'il n'y a pas de serveur impliqué pour un encaissement
+// espèces/preuve). #corrigé (demande utilisateur, "dès que c'est enregistré
+// [les paramètres] c'est marqué prêt") : le paiement ne suffit plus à
+// rendre le billet visible dans la file d'attente — seule la saisie des
+// paramètres (saisirParametres, billetsSessionService.js) le fait.
 export const encaisserEnEspeces = async (factureId, etablissementId, actor, billetSessionId) => {
   const batch = writeBatch(db);
   batch.update(doc(db, 'factures', factureId), {
     statut: 'payee', modePaiement: 'especes', payeePar: actor.uid, payeeAt: serverTimestamp(),
   });
   if (billetSessionId) {
-    batch.update(doc(db, 'billets_session', billetSessionId), { statut: 'pret' });
+    batch.update(doc(db, 'billets_session', billetSessionId), { statut: 'arrive' });
   }
   await batch.commit();
   await logAction({ actor, etablissementId, action: 'facture.encaisser_especes', targetType: 'facture', targetId: factureId });
@@ -47,7 +51,7 @@ export const encaisserAvecPreuve = async (factureId, preuveUrl, etablissementId,
     statut: 'payee', modePaiement: 'mobile_money_preuve', preuveUrl, payeePar: actor.uid, payeeAt: serverTimestamp(),
   });
   if (billetSessionId) {
-    batch.update(doc(db, 'billets_session', billetSessionId), { statut: 'pret' });
+    batch.update(doc(db, 'billets_session', billetSessionId), { statut: 'arrive' });
   }
   await batch.commit();
   await logAction({ actor, etablissementId, action: 'facture.encaisser_preuve', targetType: 'facture', targetId: factureId });
