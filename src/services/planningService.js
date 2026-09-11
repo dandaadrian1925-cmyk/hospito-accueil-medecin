@@ -1,37 +1,27 @@
 import {
-  collection, getDocs, query, where, orderBy, onSnapshot, documentId,
+  collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, documentId, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { logAction } from './auditService';
 
-// Planning du personnel — LECTURE SEULE côté accueil depuis la refonte de
-// hospito-admin (vue hebdomadaire par service, plusieurs plages horaires/jour,
-// synthèse IA). #retiré (conflit détecté, écriture croisée) : cette page
-// écrivait auparavant directement ici (creerCreneau/supprimerCreneau, un
-// créneau à la fois), alors que hospito-admin réécrit désormais TOUT le
-// roster d'un jour en un coup (supprime puis recrée) — un accueil ajoutant un
-// créneau juste avant qu'un admin enregistre sa propre journée le voyait
-// silencieusement effacé. Un seul gestionnaire (hospito-admin), l'accueil
-// garde uniquement la consultation, dont il a réellement besoin pour confirmer
-// un rendez-vous en sachant qui est de garde.
-export const CRENEAUX = ['matin', 'apres-midi', 'nuit'];
+// #refonte (demande utilisateur, "efface la logique de planning du
+// personnel actuelle... l'accueil de chaque service entre les horaires de
+// travail générales de tous les médecins de son service et ça s'affiche
+// directement chez l'admin ainsi que pour tous les autres services") :
+// remplace l'ancien roster daté (`plannings`, un doc par médecin × date ×
+// créneau, redéfini semaine après semaine côté hospito-admin) par un
+// planning hebdomadaire RÉCURRENT (`affiliations.horairesHabituels`), saisi
+// ici même par l'accueil pour les médecins de SON PROPRE service (règle
+// Firestore scopée service — un accueil ne peut pas toucher aux horaires
+// d'un autre service).
 
-export const listenPlanning = (etablissementId, dateDebut, dateFin, callback) => {
-  const q = query(
-    collection(db, 'plannings'),
-    where('etablissementId', '==', etablissementId),
-    where('date', '>=', dateDebut),
-    where('date', '<=', dateFin),
-    orderBy('date', 'asc'),
-  );
-  return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
-};
-
-// Uniquement les médecins (contrairement à listerPersonnelActif côté
-// hospito-admin qui liste tout le monde) — l'accueil planifie des médecins,
-// pas son propre personnel de guichet.
+// Uniquement les médecins (contrairement à listerPersonnel côté
+// hospito-admin qui liste tout le monde) — TOUS services confondus, pour
+// que l'accueil d'un service voie aussi les horaires des autres (lecture
+// seule pour ceux qu'il ne gère pas, cf. HorairesMedecinsPage).
 export const listerMedecinsActifs = async (etablissementId) => {
   const snap = await getDocs(query(collection(db, 'affiliations'), where('etablissementId', '==', etablissementId), where('actif', '==', true)));
-  const affiliations = snap.docs.map((d) => d.data()).filter((a) => a.role === 'medecin');
+  const affiliations = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((a) => a.role === 'medecin');
   const uids = [...new Set(affiliations.map((a) => a.userId))];
   const profils = {};
   for (let i = 0; i < uids.length; i += 30) {
@@ -41,15 +31,8 @@ export const listerMedecinsActifs = async (etablissementId) => {
     usersSnap.docs.forEach((d) => { profils[d.id] = d.data(); });
   }
   return affiliations.map((a) => ({
-    uid: a.userId, nom: profils[a.userId]?.displayName || a.userId,
+    id: a.id, uid: a.userId, nom: profils[a.userId]?.displayName || a.userId,
     serviceId: a.serviceId || null, service: a.service || null,
-    // #nouveau (demande utilisateur, "le tableau de bord de l'accueil doit
-    // avoir le ou les médecins du service en poste le jour en question avec
-    // les horaires de chacun... on va mettre des horaires par défaut
-    // général du genre Dr X travaille tous les mercredis et vendredis de
-    // 14h à 18h") : planning hebdomadaire RÉCURRENT saisi une fois par
-    // l'admin (hospito-admin, PersonnelDetailPage) — [{jour, heureDebut,
-    // heureFin}], distinct des `plannings` datés au jour le jour ci-dessus.
     horairesHabituels: a.horairesHabituels || null,
   }));
 };
@@ -57,21 +40,49 @@ export const listerMedecinsActifs = async (etablissementId) => {
 export const JOURS_SEMAINE = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 export const jourDeLaSemaineAujourdhui = () => JOURS_SEMAINE[new Date().getDay()];
 
-// Lecture seule, pour proposer à la confirmation d'une demande de RDV les
-// médecins réellement de garde plutôt que tout le personnel affilié.
-export const creneauDepuisHeure = (heure) => (heure < 12 ? 'matin' : heure < 18 ? 'apres-midi' : 'nuit');
-
-export const listerMedecinsDeGarde = async (etablissementId, date, creneau, serviceId) => {
-  const snap = await getDocs(query(
-    collection(db, 'plannings'),
-    where('etablissementId', '==', etablissementId),
-    where('date', '==', date),
-    where('creneau', '==', creneau),
-  ));
-  const entries = snap.docs.map((d) => d.data());
-  if (serviceId) {
-    const memeService = entries.filter((e) => e.serviceId === serviceId);
-    if (memeService.length) return new Set(memeService.map((e) => e.personnelUid));
+// Même miroir public que hospito-admin/personnelService.js::syncMedecinPublic
+// — nécessaire pour que la page Médecins du site patient (hospito-patient)
+// reflète immédiatement une modification faite ici. Dupliqué plutôt que
+// partagé entre apps (aucune app ne dépend du code source d'une autre dans
+// ce projet).
+const syncMedecinPublic = async (affiliationId, etablissementId) => {
+  const snap = await getDoc(doc(db, 'affiliations', affiliationId));
+  const a = snap.exists() ? snap.data() : null;
+  if (!a || a.role !== 'medecin' || a.actif === false) {
+    await deleteDoc(doc(db, 'medecins_publics', affiliationId)).catch(() => {});
+    return;
   }
-  return new Set(entries.map((e) => e.personnelUid));
+  const userSnap = await getDoc(doc(db, 'users', a.userId));
+  await setDoc(doc(db, 'medecins_publics', affiliationId), {
+    uid: a.userId, etablissementId, etablissementNom: a.etablissementNom || null,
+    nom: userSnap.exists() ? userSnap.data().displayName || null : null,
+    serviceId: a.serviceId || null, serviceNom: a.service || null,
+    horairesHabituels: a.horairesHabituels || null,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+// `horairesHabituels` UNIQUEMENT — la règle Firestore refuse tout autre
+// champ ET exige que ce médecin soit du même service que l'accueil appelant.
+export const enregistrerHorairesHabituels = async (affiliationId, horairesHabituels, etablissementId, actor) => {
+  await updateDoc(doc(db, 'affiliations', affiliationId), { horairesHabituels });
+  await syncMedecinPublic(affiliationId, etablissementId);
+  await logAction({ actor, etablissementId, action: 'personnel.horaires_habituels', targetType: 'affiliation', targetId: affiliationId });
+};
+
+// Remplace listerMedecinsDeGarde (basé sur `plannings`) : un médecin est "de
+// garde" à une date/heure donnée si son planning hebdomadaire récurrent
+// couvre le jour de la semaine ET l'heure de `dateHeureStr`
+// (datetime-local, ex. "2026-09-16T14:30").
+export const estDeGardeSelonHoraires = (horairesHabituels, dateHeureStr) => {
+  if (!dateHeureStr || !horairesHabituels?.length) return false;
+  const d = new Date(dateHeureStr);
+  const jour = JOURS_SEMAINE[d.getDay()];
+  const minutes = d.getHours() * 60 + d.getMinutes();
+  return horairesHabituels.some((h) => {
+    if (h.jour !== jour) return false;
+    const [hd, md] = (h.heureDebut || '0:0').split(':').map(Number);
+    const [hf, mf] = (h.heureFin || '0:0').split(':').map(Number);
+    return minutes >= (hd * 60 + md) && minutes < (hf * 60 + mf);
+  });
 };

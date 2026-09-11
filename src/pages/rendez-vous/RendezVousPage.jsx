@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getDocs } from 'firebase/firestore';
 import { CalendarClock, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -9,7 +9,7 @@ import { STATUTS_RDV, buildRendezVousQuery, creerRendezVous, changerStatutRendez
 import {
   listenDemandesEnAttente, confirmerDemande, refuserDemande, listerMedecinsDuService,
 } from '../../services/demandesRendezVousService';
-import { listerMedecinsDeGarde, creneauDepuisHeure } from '../../services/planningService';
+import { estDeGardeSelonHoraires } from '../../services/planningService';
 import { useFirestorePagination } from '../../hooks/useFirestorePagination';
 import DataTable from '../../components/common/DataTable';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -29,12 +29,6 @@ function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
   const [demandeEnCours, setDemandeEnCours] = useState(null);
   const [form, setForm] = useState({ medecinId: '', dateHeure: '' });
   const [saving, setSaving] = useState(false);
-  // Filtrage par planning (garde du jour/créneau choisi) — null tant qu'aucune
-  // date/heure n'est renseignée ou que la vérification est en cours ; repasse
-  // à la liste complète des médecins si personne n'est explicitement de garde
-  // (planning pas encore renseigné pour cet établissement), pour ne jamais
-  // bloquer la confirmation faute de données.
-  const [medecinsDeGarde, setMedecinsDeGarde] = useState(null);
 
   useEffect(() => listenDemandesEnAttente(etablissementId, setToutesLesDemandes), [etablissementId]);
 
@@ -58,17 +52,16 @@ function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
     ? (toutesLesDemandes?.filter((d) => d.serviceId === monServiceId) ?? null)
     : toutesLesDemandes;
 
-  useEffect(() => {
-    if (!form.dateHeure) { setMedecinsDeGarde(null); return; }
-    const dateObj = new Date(form.dateHeure);
-    const date = form.dateHeure.slice(0, 10);
-    const creneau = creneauDepuisHeure(dateObj.getHours());
-    let annule = false;
-    listerMedecinsDeGarde(etablissementId, date, creneau, demandeEnCours?.serviceId).then((uids) => {
-      if (!annule) setMedecinsDeGarde(uids);
-    }).catch(() => { if (!annule) setMedecinsDeGarde(null); });
-    return () => { annule = true; };
-  }, [etablissementId, form.dateHeure, demandeEnCours?.serviceId]);
+  // #corrigé (efface l'ancien "de garde" basé sur `plannings`, remplacé par
+  // les horaires hebdomadaires récurrents) : calcul synchrone à partir des
+  // `medecins` déjà chargés (chacun porte désormais `horairesHabituels`) —
+  // repasse à la liste complète si personne n'est explicitement de garde
+  // (horaires pas encore renseignés par l'accueil de ce service), pour ne
+  // jamais bloquer la confirmation faute de données.
+  const medecinsDeGarde = useMemo(() => {
+    if (!form.dateHeure) return null;
+    return new Set(medecins.filter((m) => estDeGardeSelonHoraires(m.horairesHabituels, form.dateHeure)).map((m) => m.uid));
+  }, [medecins, form.dateHeure]);
 
   const medecinsProposes = medecinsDeGarde?.size ? medecins.filter((m) => medecinsDeGarde.has(m.uid)) : medecins;
   const planningRenseigne = !!medecinsDeGarde?.size;
@@ -167,8 +160,8 @@ function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
               {form.dateHeure && (
                 <p className="text-xs text-muted-foreground">
                   {planningRenseigne
-                    ? 'Médecins de garde sur ce créneau, d\'après le planning.'
-                    : 'Aucun planning renseigné pour ce créneau — tous les médecins de l\'établissement sont proposés.'}
+                    ? 'Médecins de garde sur ce créneau, d\'après leurs horaires habituels.'
+                    : 'Aucun horaire habituel renseigné pour ce créneau — tous les médecins de l\'établissement sont proposés.'}
                 </p>
               )}
             </div>

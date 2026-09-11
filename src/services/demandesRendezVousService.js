@@ -88,5 +88,12 @@ export const listerMedecinsDuService = async (etablissementId, serviceId) => {
     const usersSnap = await getDocs(query(collection(db, 'users'), where(documentId(), 'in', chunk)));
     usersSnap.docs.forEach((d) => { profils[d.id] = d.data(); });
   }
-  return affiliations.map((a) => ({ uid: a.userId, nom: profils[a.userId]?.displayName || a.userId }));
+  return affiliations.map((a) => ({
+    uid: a.userId, nom: profils[a.userId]?.displayName || a.userId,
+    // #nouveau (remplace le filtrage "de garde" basé sur `plannings`,
+    // supprimé) : nécessaire à RendezVousPage pour calculer, à la
+    // confirmation d'une demande, qui est de garde à la date/heure choisie
+    // via estDeGardeSelonHoraires (planningService.js).
+    horairesHabituels: a.horairesHabituels || null,
+  }));
 };

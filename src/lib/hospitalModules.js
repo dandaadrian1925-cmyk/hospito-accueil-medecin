@@ -11,4 +11,11 @@ export const HOSPITAL_MODULES = [
   { path: 'visites', label: 'Visites', icon: HeartHandshake, module: null, phase: 'Phase 5' },
   { path: 'paiement', label: 'Paiement au guichet', icon: CreditCard, module: null, phase: 'Phase 4' },
   { path: 'transparence', label: 'Attente & transparence', icon: Clock, module: null, phase: 'Phase 5' },
+  // #nouveau (demande utilisateur, "l'accueil de chaque service entre les
+  // horaires de travail générales de tous les médecins de son service et ça
+  // s'affiche directement chez l'admin ainsi que pour tous les autres
+  // services") : remplace l'ancien planning daté (route déjà existante,
+  // jamais reliée à la sidebar) par la saisie/consultation des horaires
+  // hebdomadaires récurrents.
+  { path: 'planning', label: 'Horaires médecins', icon: Clock, module: null, phase: 'Phase 2' },
 ];
