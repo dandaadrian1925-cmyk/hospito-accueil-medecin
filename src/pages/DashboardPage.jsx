@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Ticket, CalendarClock } from 'lucide-react';
+import { Building2, Ticket, CalendarClock, Stethoscope, Clock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { roleLabel } from '../lib/permissions';
 import { HOSPITAL_MODULES } from '../lib/hospitalModules';
 import { listenServices } from '../services/litsService';
 import { listenBilletsDuJour } from '../services/billetsSessionService';
 import { buildRendezVousQuery } from '../services/rendezVousService';
+import { listerMedecinsActifs, jourDeLaSemaineAujourdhui } from '../services/planningService';
 import { onSnapshot } from 'firebase/firestore';
 import StatCard from '../components/common/StatCard';
 
@@ -20,6 +21,7 @@ export default function DashboardPage() {
   const [services, setServices] = useState([]);
   const [billetsDuJour, setBilletsDuJour] = useState(null);
   const [rdvDuJour, setRdvDuJour] = useState(null);
+  const [medecins, setMedecins] = useState(null);
 
   // Chaque compte accueil gère toujours exactement un service (serviceId,
   // réglé depuis hospito-admin) — le tableau de bord l'affiche directement,
@@ -41,6 +43,11 @@ export default function DashboardPage() {
     return onSnapshot(buildRendezVousQuery(etablissementId), (snap) => setRdvDuJour(snap.docs.map((d) => d.data())));
   }, [etablissementId]);
 
+  useEffect(() => {
+    if (!etablissementId) return;
+    listerMedecinsActifs(etablissementId).then(setMedecins).catch(() => setMedecins([]));
+  }, [etablissementId]);
+
   const monService = services.find((s) => s.id === monServiceId);
   // #nouveau — même logique que Sidebar.jsx : Admissions/Visites n'ont de
   // sens que pour un service qui héberge réellement des patients.
@@ -55,6 +62,21 @@ export default function DashboardPage() {
   const billetsMonService = monServiceId ? (billetsDuJour || []).filter((b) => b.serviceId === monServiceId) : billetsDuJour;
   const aujourdHui = new Date().toISOString().slice(0, 10);
   const rdvAujourdhui = (rdvDuJour || []).filter((r) => r.dateHeure?.toDate && r.dateHeure.toDate().toISOString().slice(0, 10) === aujourdHui);
+
+  // #nouveau (demande utilisateur, "le tableau de bord de l'accueil doit
+  // avoir le ou les médecins du service en poste le jour en question avec
+  // les horaires de chacun") : issu du planning hebdomadaire RÉCURRENT de
+  // chaque médecin (horairesHabituels, saisi une fois côté hospito-admin) —
+  // jamais des `plannings` datés au jour le jour, quasi jamais renseignés en
+  // pratique. Une entrée dont le jour ne correspond pas à aujourd'hui
+  // n'apparaît simplement pas — "certains samedis" reste une case entrée
+  // par l'admin comme n'importe quel autre jour, sans notion de semaine sur
+  // deux.
+  const jourAujourdhui = jourDeLaSemaineAujourdhui();
+  const medecinsDuService = monServiceId ? (medecins || []).filter((m) => m.serviceId === monServiceId) : (medecins || []);
+  const medecinsEnPoste = medecinsDuService
+    .map((m) => ({ ...m, creneauxAujourdhui: (m.horairesHabituels || []).filter((h) => h.jour === jourAujourdhui) }))
+    .filter((m) => m.creneauxAujourdhui.length > 0);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -71,6 +93,37 @@ export default function DashboardPage() {
         )}
         <StatCard label="Billets aujourd'hui" value={billetsMonService === null ? '…' : billetsMonService.length} icon={Ticket} onClick={() => navigate('/billets')} />
         <StatCard label="Rendez-vous aujourd'hui" value={rdvDuJour === null ? '…' : rdvAujourdhui.length} icon={CalendarClock} onClick={() => navigate('/rendez-vous')} />
+      </div>
+
+      <div className="space-y-3">
+        <h2 className="font-display text-lg font-semibold text-foreground flex items-center gap-2">
+          <Stethoscope size={18} className="text-primary" /> Médecins en poste aujourd'hui
+        </h2>
+        {medecins === null ? (
+          <p className="text-sm text-muted-foreground">Chargement…</p>
+        ) : medecinsEnPoste.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aucun médecin en poste aujourd'hui selon les horaires habituels renseignés pour ce service.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {medecinsEnPoste.map((m) => (
+              <div key={m.uid} className="glass-card-elevated p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-secondary text-primary flex items-center justify-center font-display font-bold flex-shrink-0">
+                  {(m.nom || '?').trim().split(/\s+/).slice(0, 2).map((s) => s[0]?.toUpperCase()).join('')}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">Dr {m.nom}</p>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {m.creneauxAujourdhui.map((h, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground bg-secondary/60 rounded-full px-2 py-0.5">
+                        <Clock size={11} /> {h.heureDebut}–{h.heureFin}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="space-y-6">

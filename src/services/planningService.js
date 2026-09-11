@@ -43,8 +43,19 @@ export const listerMedecinsActifs = async (etablissementId) => {
   return affiliations.map((a) => ({
     uid: a.userId, nom: profils[a.userId]?.displayName || a.userId,
     serviceId: a.serviceId || null, service: a.service || null,
+    // #nouveau (demande utilisateur, "le tableau de bord de l'accueil doit
+    // avoir le ou les médecins du service en poste le jour en question avec
+    // les horaires de chacun... on va mettre des horaires par défaut
+    // général du genre Dr X travaille tous les mercredis et vendredis de
+    // 14h à 18h") : planning hebdomadaire RÉCURRENT saisi une fois par
+    // l'admin (hospito-admin, PersonnelDetailPage) — [{jour, heureDebut,
+    // heureFin}], distinct des `plannings` datés au jour le jour ci-dessus.
+    horairesHabituels: a.horairesHabituels || null,
   }));
 };
+
+export const JOURS_SEMAINE = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+export const jourDeLaSemaineAujourdhui = () => JOURS_SEMAINE[new Date().getDay()];
 
 // Lecture seule, pour proposer à la confirmation d'une demande de RDV les
 // médecins réellement de garde plutôt que tout le personnel affilié.
