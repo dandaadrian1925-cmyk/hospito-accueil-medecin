@@ -93,11 +93,18 @@ function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
     const medecin = medecins.find((m) => m.uid === form.medecinId);
     setSaving(true);
     try {
-      await confirmerDemande(demandeEnCours.id, { medecinId: medecin?.uid, medecinNom: medecin?.nom, dateHeure: form.dateHeure }, etablissementId, actor);
+      await confirmerDemande(demandeEnCours.id, {
+        medecinId: medecin?.uid, medecinNom: medecin?.nom, dateHeure: form.dateHeure,
+        patientUid: demandeEnCours.patientUid, type: demandeEnCours.type,
+      }, etablissementId, actor);
       toast.success('Demande confirmée');
       setDemandeEnCours(null);
     } catch (e) {
-      toast.error(e.message || 'Erreur');
+      const messages = {
+        AUCUNE_FICHE_PATIENT: "Ce patient n'a jamais de fiche dans cet établissement — il doit d'abord passer à l'accueil pour obtenir un billet de consultation avant que ce RDV puisse être confirmé.",
+        AUCUN_BILLET_VALIDE: "Aucun billet de consultation valide pour ce patient à la date choisie — passage à l'accueil requis avant confirmation.",
+      };
+      toast.error(messages[e.message] || e.message || 'Erreur', { duration: 7000 });
     } finally {
       setSaving(false);
     }

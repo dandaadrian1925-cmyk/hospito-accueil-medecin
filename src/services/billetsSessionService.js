@@ -46,6 +46,32 @@ export const trouverBilletActifDuJour = async (patientId, etablissementId) => {
   return actif || null;
 };
 
+// #nouveau (demande utilisateur, "la confirmation n'est possible que s'il a
+// un billet de consultation valide au jour du rendez-vous") : même fenêtre
+// de validité que trouverBilletActifDuJour (dureeValiditeBilletJours depuis
+// la création du billet), mais évaluée à une date CIBLE (celle du RDV,
+// potentiellement dans le futur) plutôt qu'à "maintenant". Le statut
+// 'consulte' n'invalide PAS le billet ici : "déjà vu" ne veut pas dire "n'a
+// jamais eu de billet", seule la fenêtre de date compte pour cette
+// vérification précise.
+export const trouverBilletValidePourDate = async (patientId, etablissementId, dateCible) => {
+  const { dureeValiditeBilletJours } = await getSettings(etablissementId);
+  const snap = await getDocs(query(
+    collection(db, 'billets_session'),
+    where('etablissementId', '==', etablissementId),
+    where('patientId', '==', patientId),
+  ));
+  const cibleMs = new Date(dateCible).getTime();
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .find((b) => {
+      const creeMs = b.createdAt?.toDate?.()?.getTime();
+      if (!creeMs) return false;
+      const expireMs = creeMs + dureeValiditeBilletJours * 24 * 3600 * 1000;
+      return cibleMs >= creeMs && cibleMs <= expireMs;
+    }) || null;
+};
+
 // `medecinId`/`medecinNom` optionnels (demande utilisateur, "file d'attente
 // liée à UN médecin précis") : absent = comportement historique, visible par
 // tout le service (cf. hospito-medecin, listenFileAttente).

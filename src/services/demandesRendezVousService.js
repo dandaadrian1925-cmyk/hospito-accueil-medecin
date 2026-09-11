@@ -3,6 +3,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { logAction } from './auditService';
+import { trouverFicheParPatientUid } from './patientsService';
+import { trouverBilletValidePourDate } from './billetsSessionService';
 
 // Demandes de RDV soumises depuis l'app patient (hospito-patient) — distinctes
 // des rendez_vous pris directement au guichet (rendezVousService.js), car
@@ -20,14 +22,33 @@ export const listenDemandesEnAttente = (etablissementId, callback) => {
   return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
 };
 
-export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateHeure }, etablissementId, actor) => {
+// #nouveau (demande utilisateur, "la confirmation n'est possible que s'il a
+// un billet de consultation valide au jour du rendez-vous") : le patient
+// doit déjà être passé une fois à l'accueil de CET établissement (fiche +
+// billet), avec une fenêtre de validité couvrant la date du RDV — sinon la
+// confirmation est refusée AVANT toute écriture (fail closed, jamais un RDV
+// confirmé sans billet correspondant). #limité au présentiel : un patient en
+// téléconsultation ne passe jamais physiquement à l'accueil et n'aura donc
+// jamais de billet — exiger un billet pour cette voie casserait entièrement
+// la téléconsultation, déjà en production.
+export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateHeure, patientUid, type }, etablissementId, actor) => {
+  if (!dateHeure) throw new Error('DATE_REQUISE');
+  let billetId = null;
+  if (type !== 'teleconsultation') {
+    const fiche = patientUid ? await trouverFicheParPatientUid(patientUid, etablissementId) : null;
+    if (!fiche) throw new Error('AUCUNE_FICHE_PATIENT');
+    const billet = await trouverBilletValidePourDate(fiche.id, etablissementId, dateHeure);
+    if (!billet) throw new Error('AUCUN_BILLET_VALIDE');
+    billetId = billet.id;
+  }
+
   await updateDoc(doc(db, 'demandes_rendez_vous', demandeId), {
     statut: 'confirme',
     medecinId: medecinId || null,
     medecinNom: medecinNom || null,
-    dateHeure: dateHeure ? Timestamp.fromDate(new Date(dateHeure)) : null,
+    dateHeure: Timestamp.fromDate(new Date(dateHeure)),
   });
-  await logAction({ actor, etablissementId, action: 'demande_rdv.confirmer', targetType: 'demande_rendez_vous', targetId: demandeId, details: { medecinId } });
+  await logAction({ actor, etablissementId, action: 'demande_rdv.confirmer', targetType: 'demande_rendez_vous', targetId: demandeId, details: { medecinId, billetId } });
 };
 
 export const refuserDemande = async (demandeId, etablissementId, actor) => {
