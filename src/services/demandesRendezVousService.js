@@ -40,6 +40,17 @@ export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateH
     const billet = await trouverBilletValidePourDate(fiche.id, etablissementId, dateHeure);
     if (!billet) throw new Error('AUCUN_BILLET_VALIDE');
     billetId = billet.id;
+    // #nouveau (demande utilisateur, "lorsqu'un rendez-vous est confirmé, il
+    // entre directement dans la file d'attente du médecin en question") :
+    // le billet trouvé ci-dessus existait déjà (condition de confirmation),
+    // mais sans forcément porter le bon médecin ni l'heure de CE rendez-vous
+    // — on le met à jour pour qu'il apparaisse dans la bonne file (cf.
+    // billetsSessionService.js::listenFileAttente, hospito-medecin et
+    // hospito-accueil-medecin, filtrées/triées sur ces mêmes champs).
+    await updateDoc(doc(db, 'billets_session', billet.id), {
+      medecinId: medecinId || null, medecinNom: medecinNom || null,
+      dateHeure: Timestamp.fromDate(new Date(dateHeure)), demandeId,
+    });
   }
 
   await updateDoc(doc(db, 'demandes_rendez_vous', demandeId), {

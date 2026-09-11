@@ -25,6 +25,37 @@ export const listenBilletsDuJour = (etablissementId, callback) => {
   return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
 };
 
+// #nouveau (demande utilisateur, "la sidebar de l'accueil médecin doit
+// aussi avoir file d'attente... du jour en cours et en ordre des heures de
+// rendez-vous") : contrairement à listenBilletsDuJour (créés aujourd'hui,
+// triés par heure de CRÉATION), un billet réutilisé pour confirmer un RDV
+// en ligne (cf. confirmerDemande, demandesRendezVousService.js) peut avoir
+// été créé un autre jour — sa vraie "heure du jour" est celle du RDV
+// (`dateHeure`) quand il y en a une, sinon sa création (accueil physique,
+// sans RDV en ligne). Filtré/trié CLIENT (pas de nouvelle clause `where` ni
+// d'index composite) sur cette heure effective.
+const heureEffective = (b) => (b.dateHeure?.toDate?.() || b.createdAt?.toDate?.() || null);
+const estAujourdhui = (date) => {
+  if (!date) return false;
+  const auj = new Date();
+  return date.getFullYear() === auj.getFullYear() && date.getMonth() === auj.getMonth() && date.getDate() === auj.getDate();
+};
+
+export const listenFileAttente = (etablissementId, serviceId, callback) => {
+  const q = query(
+    collection(db, 'billets_session'),
+    where('etablissementId', '==', etablissementId),
+    where('statut', '==', 'pret'),
+    where('serviceId', '==', serviceId),
+  );
+  return onSnapshot(q, (snap) => callback(
+    snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((b) => estAujourdhui(heureEffective(b)))
+      .sort((a, b) => heureEffective(a) - heureEffective(b)),
+  ));
+};
+
 // #évolué (demande utilisateur, "durée de validité d'un billet configurable
 // par le sysadmin dans les paramètres métiers, 14 jours par défaut") : un
 // billet reste actif — bloquant la création d'un second pour ce même

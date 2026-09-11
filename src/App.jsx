@@ -11,6 +11,7 @@ const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const ModulePrevu = lazy(() => import('./pages/ModulePrevu'));
 const BilletsSessionPage = lazy(() => import('./pages/billets/BilletsSessionPage'));
+const FileAttentePage = lazy(() => import('./pages/file-attente/FileAttentePage'));
 const AdmissionsPage = lazy(() => import('./pages/admissions/AdmissionsPage'));
 const RendezVousPage = lazy(() => import('./pages/rendez-vous/RendezVousPage'));
 const PaiementGuichetPage = lazy(() => import('./pages/paiement/PaiementGuichetPage'));
@@ -56,13 +57,14 @@ export default function App() {
               <Route index element={<DashboardPage />} />
 
               <Route path="billets" element={<BilletsSessionPage />} />
+              <Route path="file-attente" element={<FileAttentePage />} />
               <Route path="admissions" element={<AdmissionsPage />} />
               <Route path="rendez-vous" element={<RendezVousPage />} />
               <Route path="paiement" element={<PaiementGuichetPage />} />
               <Route path="visites" element={<VisitesPage />} />
               <Route path="transparence" element={<TransparenceAttentePage />} />
               <Route path="planning" element={<PlanningPage />} />
-              {HOSPITAL_MODULES.filter((m) => !['billets', 'admissions', 'rendez-vous', 'paiement', 'visites', 'transparence', 'planning'].includes(m.path)).map((m) => (
+              {HOSPITAL_MODULES.filter((m) => !['billets', 'file-attente', 'admissions', 'rendez-vous', 'paiement', 'visites', 'transparence', 'planning'].includes(m.path)).map((m) => (
                 <Route key={m.path} path={m.path} element={<ModulePrevu titre={m.label} phase={m.phase} />} />
               ))}
 

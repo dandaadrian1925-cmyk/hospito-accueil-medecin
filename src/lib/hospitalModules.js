@@ -6,6 +6,10 @@ import { UserPlus, CalendarClock, HeartHandshake, CreditCard, Clock, Ticket } fr
 // abandonné, cf. hospito-admin) et "Urgences" (module retiré de cette app).
 export const HOSPITAL_MODULES = [
   { path: 'billets', label: 'Billet de consultation', icon: Ticket, module: null, phase: 'Phase 6' },
+  // #nouveau (demande utilisateur, "la sidebar de l'accueil médecin doit
+  // aussi avoir file d'attente") : patients "prêts" pour consultation
+  // aujourd'hui pour le service de cet accueil, triés par heure de RDV.
+  { path: 'file-attente', label: "File d'attente", icon: Ticket, module: null, phase: 'Phase 6' },
   { path: 'admissions', label: 'Admissions', icon: UserPlus, module: null, phase: 'Phase 1' },
   { path: 'rendez-vous', label: 'Rendez-vous', icon: CalendarClock, module: null, phase: 'Phase 1' },
   { path: 'visites', label: 'Visites', icon: HeartHandshake, module: null, phase: 'Phase 5' },
