@@ -33,6 +33,11 @@ export const listenDemandesEnAttente = (etablissementId, callback) => {
 // la téléconsultation, déjà en production.
 export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateHeure, patientUid, type }, etablissementId, actor) => {
   if (!dateHeure) throw new Error('DATE_REQUISE');
+  // #nouveau (demande utilisateur, "la confirmation par l'accueil échoue
+  // avec message d'erreur lorsque l'heure de rendez-vous est déjà passée si
+  // c'est le jour courant") : refuse toute confirmation vers une date/heure
+  // déjà écoulée — jamais un RDV "confirmé" pour un horaire déjà révolu.
+  if (new Date(dateHeure).getTime() < Date.now()) throw new Error('DATE_PASSEE');
   let billetId = null;
   if (type !== 'teleconsultation') {
     const fiche = patientUid ? await trouverFicheParPatientUid(patientUid, etablissementId) : null;

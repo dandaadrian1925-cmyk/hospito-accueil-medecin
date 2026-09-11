@@ -96,6 +96,7 @@ function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
       const messages = {
         AUCUNE_FICHE_PATIENT: "Ce patient n'a jamais de fiche dans cet établissement — il doit d'abord passer à l'accueil pour obtenir un billet de consultation avant que ce RDV puisse être confirmé.",
         AUCUN_BILLET_VALIDE: "Aucun billet de consultation valide pour ce patient à la date choisie — passage à l'accueil requis avant confirmation.",
+        DATE_PASSEE: "L'heure choisie est déjà passée — sélectionnez une date et une heure à venir.",
       };
       toast.error(messages[e.message] || e.message || 'Erreur', { duration: 7000 });
     } finally {
