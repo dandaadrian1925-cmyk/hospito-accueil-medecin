@@ -18,6 +18,7 @@ const PaiementGuichetPage = lazy(() => import('./pages/paiement/PaiementGuichetP
 const VisitesPage = lazy(() => import('./pages/visites/VisitesPage'));
 const TransparenceAttentePage = lazy(() => import('./pages/transparence/TransparenceAttentePage'));
 const PlanningPage = lazy(() => import('./pages/planning/PlanningPage'));
+const HistoriquePage = lazy(() => import('./pages/historique/HistoriquePage'));
 const MessagesPage = lazy(() => import('./pages/messages/MessagesPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const ProfilPage = lazy(() => import('./pages/profil/ProfilPage'));
@@ -64,6 +65,7 @@ export default function App() {
               <Route path="visites" element={<VisitesPage />} />
               <Route path="transparence" element={<TransparenceAttentePage />} />
               <Route path="planning" element={<PlanningPage />} />
+              <Route path="historique" element={<HistoriquePage />} />
               {HOSPITAL_MODULES.filter((m) => !['billets', 'file-attente', 'admissions', 'rendez-vous', 'paiement', 'visites', 'transparence', 'planning'].includes(m.path)).map((m) => (
                 <Route key={m.path} path={m.path} element={<ModulePrevu titre={m.label} phase={m.phase} />} />
               ))}

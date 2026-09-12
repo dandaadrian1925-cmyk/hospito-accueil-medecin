@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
-import { LayoutDashboard, MessageCircle, Bell, UserCircle, ChevronLeft, X, LogOut } from 'lucide-react';
+import { LayoutDashboard, MessageCircle, Bell, UserCircle, ChevronLeft, X, LogOut, History } from 'lucide-react';
 import { auth } from '../../firebase/config';
 import { useAuth } from '../../context/AuthContext';
 import { HOSPITAL_MODULES } from '../../lib/hospitalModules';
@@ -49,6 +49,11 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
       .filter((m) => !MODULES_DANS_UNE_AUTRE_APP.has(m.path))
       .filter((m) => hospitalise || !MODULES_HOSPITALISATION_UNIQUEMENT.has(m.path))
       .map((m) => ({ to: `/${m.path}`, label: m.label, icon: m.icon })),
+    // #nouveau (demande utilisateur, "une ligne Historique pour afficher
+    // tous les rdv passés et expirés") : pas un module hospitalier partagé
+    // (HOSPITAL_MODULES) — propre à cette app, ajouté ici comme
+    // Communication interne/Notifications/Profil juste en dessous.
+    { to: '/historique', label: 'Historique', icon: History },
     { to: '/messages', label: 'Communication interne', icon: MessageCircle },
     { to: '/notifications', label: 'Notifications', icon: Bell },
     { to: '/profil', label: 'Profil', icon: UserCircle },
