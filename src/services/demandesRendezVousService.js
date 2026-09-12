@@ -27,53 +27,51 @@ export const listenDemandesEnAttente = (etablissementId, callback) => {
 // doit déjà être passé une fois à l'accueil de CET établissement (fiche +
 // billet), avec une fenêtre de validité couvrant la date du RDV — sinon la
 // confirmation est refusée AVANT toute écriture (fail closed, jamais un RDV
-// confirmé sans billet correspondant). #limité au présentiel : un patient en
-// téléconsultation ne passe jamais physiquement à l'accueil et n'aura donc
-// jamais de billet — exiger un billet pour cette voie casserait entièrement
-// la téléconsultation, déjà en production.
-export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateHeure, patientUid, patientFicheId, type }, etablissementId, actor) => {
+// confirmé sans billet correspondant).
+// #corrigé (demande utilisateur, "la téléconsultation exige aussi un billet
+// de consultation valide à la date choisie, impérativement") : l'exemption
+// initiale de la téléconsultation est retirée — même exigence, aucune
+// différence de traitement selon le type de RDV.
+export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateHeure, patientUid, patientFicheId }, etablissementId, actor) => {
   if (!dateHeure) throw new Error('DATE_REQUISE');
   // #nouveau (demande utilisateur, "la confirmation par l'accueil échoue
   // avec message d'erreur lorsque l'heure de rendez-vous est déjà passée si
   // c'est le jour courant") : refuse toute confirmation vers une date/heure
   // déjà écoulée — jamais un RDV "confirmé" pour un horaire déjà révolu.
   if (new Date(dateHeure).getTime() < Date.now()) throw new Error('DATE_PASSEE');
-  let billetId = null;
-  if (type !== 'teleconsultation') {
-    // #nouveau (demande utilisateur, "un bébé ou une personne âgée sans
-    // compte doit aussi pouvoir être pris en compte") : une demande faite
-    // par un tuteur POUR UN PROCHE porte déjà l'id de sa fiche — jamais de
-    // correspondance CNI à faire (le proche n'a ni CNI ni compte propre).
-    const fiche = patientFicheId
-      ? { id: patientFicheId }
-      : (patientUid ? await trouverFicheParPatientUid(patientUid, etablissementId) : null);
-    if (!fiche) throw new Error('AUCUNE_FICHE_PATIENT');
-    const billet = await trouverBilletValidePourDate(fiche.id, etablissementId, dateHeure);
-    if (!billet) throw new Error('AUCUN_BILLET_VALIDE');
-    billetId = billet.id;
-    // #nouveau (demande utilisateur, "lorsqu'un rendez-vous est confirmé, il
-    // entre directement dans la file d'attente du médecin en question") :
-    // le billet trouvé ci-dessus existait déjà (condition de confirmation),
-    // mais sans forcément porter le bon médecin ni l'heure de CE rendez-vous
-    // — on le met à jour pour qu'il apparaisse dans la bonne file (cf.
-    // billetsSessionService.js::listenFileAttente, hospito-medecin et
-    // hospito-accueil-medecin, filtrées/triées sur ces mêmes champs).
-    // #corrigé (demande utilisateur, "on prend ses paramètres et dès que
-    // c'est enregistré c'est marqué prêt") : un billet trouvé encore 'pret'
-    // ou 'consulte' vient forcément d'UNE AUTRE venue (sa fenêtre de
-    // validité couvre plusieurs jours) — repasse à 'arrive' (paiement/passage
-    // déjà fait, paramètres pas encore pris POUR CE rendez-vous) et efface
-    // les anciens paramètres/traces de consultation, pour ne jamais laisser
-    // croire que ce nouveau rendez-vous est déjà prêt ou déjà vu. Un billet
-    // encore 'a_payer' reste 'a_payer' — le paiement doit toujours se faire
-    // avant l'entrée en file.
-    const dejaPayeOuVu = billet.statut !== 'a_payer';
-    await updateDoc(doc(db, 'billets_session', billet.id), {
-      medecinId: medecinId || null, medecinNom: medecinNom || null,
-      dateHeure: Timestamp.fromDate(new Date(dateHeure)), demandeId,
-      ...(dejaPayeOuVu ? { statut: 'arrive', parametres: null, parametresAt: null, consultePar: null, consulteAt: null } : {}),
-    });
-  }
+  // #nouveau (demande utilisateur, "un bébé ou une personne âgée sans
+  // compte doit aussi pouvoir être pris en compte") : une demande faite
+  // par un tuteur POUR UN PROCHE porte déjà l'id de sa fiche — jamais de
+  // correspondance CNI à faire (le proche n'a ni CNI ni compte propre).
+  const fiche = patientFicheId
+    ? { id: patientFicheId }
+    : (patientUid ? await trouverFicheParPatientUid(patientUid, etablissementId) : null);
+  if (!fiche) throw new Error('AUCUNE_FICHE_PATIENT');
+  const billet = await trouverBilletValidePourDate(fiche.id, etablissementId, dateHeure);
+  if (!billet) throw new Error('AUCUN_BILLET_VALIDE');
+  const billetId = billet.id;
+  // #nouveau (demande utilisateur, "lorsqu'un rendez-vous est confirmé, il
+  // entre directement dans la file d'attente du médecin en question") :
+  // le billet trouvé ci-dessus existait déjà (condition de confirmation),
+  // mais sans forcément porter le bon médecin ni l'heure de CE rendez-vous
+  // — on le met à jour pour qu'il apparaisse dans la bonne file (cf.
+  // billetsSessionService.js::listenFileAttente, hospito-medecin et
+  // hospito-accueil-medecin, filtrées/triées sur ces mêmes champs).
+  // #corrigé (demande utilisateur, "on prend ses paramètres et dès que
+  // c'est enregistré c'est marqué prêt") : un billet trouvé encore 'pret'
+  // ou 'consulte' vient forcément d'UNE AUTRE venue (sa fenêtre de
+  // validité couvre plusieurs jours) — repasse à 'arrive' (paiement/passage
+  // déjà fait, paramètres pas encore pris POUR CE rendez-vous) et efface
+  // les anciens paramètres/traces de consultation, pour ne jamais laisser
+  // croire que ce nouveau rendez-vous est déjà prêt ou déjà vu. Un billet
+  // encore 'a_payer' reste 'a_payer' — le paiement doit toujours se faire
+  // avant l'entrée en file.
+  const dejaPayeOuVu = billet.statut !== 'a_payer';
+  await updateDoc(doc(db, 'billets_session', billet.id), {
+    medecinId: medecinId || null, medecinNom: medecinNom || null,
+    dateHeure: Timestamp.fromDate(new Date(dateHeure)), demandeId,
+    ...(dejaPayeOuVu ? { statut: 'arrive', parametres: null, parametresAt: null, consultePar: null, consulteAt: null } : {}),
+  });
 
   await updateDoc(doc(db, 'demandes_rendez_vous', demandeId), {
     statut: 'confirme',

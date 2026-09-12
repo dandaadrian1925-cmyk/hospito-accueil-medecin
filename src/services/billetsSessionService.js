@@ -18,18 +18,6 @@ import { getSettings } from './settingsService';
 // tarif pour ce service) mais paramètres pas encore pris pour CETTE venue.
 export const STATUTS_BILLET = ['a_payer', 'arrive', 'pret', 'consulte'];
 
-export const listenBilletsDuJour = (etablissementId, callback) => {
-  const debut = new Date();
-  debut.setHours(0, 0, 0, 0);
-  const q = query(
-    collection(db, 'billets_session'),
-    where('etablissementId', '==', etablissementId),
-    where('createdAt', '>=', Timestamp.fromDate(debut)),
-    orderBy('createdAt', 'desc'),
-  );
-  return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
-};
-
 // #nouveau (demande utilisateur, "la sidebar de l'accueil médecin doit
 // aussi avoir file d'attente... du jour en cours et en ordre des heures de
 // rendez-vous") : contrairement à listenBilletsDuJour (créés aujourd'hui,
@@ -44,6 +32,37 @@ const estAujourdhui = (date) => {
   if (!date) return false;
   const auj = new Date();
   return date.getFullYear() === auj.getFullYear() && date.getMonth() === auj.getMonth() && date.getDate() === auj.getDate();
+};
+
+// #corrigé (retour utilisateur, "la file d'attente n'affiche rien même
+// quand je confirme un RDV aujourd'hui, à croire que ça part dans le
+// vide") : filtrait sur `createdAt >= minuit aujourd'hui`, alors qu'un
+// billet réutilisé pour confirmer un RDV en ligne (confirmerDemande) garde
+// sa date de CRÉATION d'origine, potentiellement bien avant aujourd'hui —
+// il n'apparaissait donc jamais ici, et personne ne pouvait lui saisir ses
+// paramètres (seul moyen de le faire passer à 'pret', visible dans la
+// vraie file d'attente). Même filtre par heure EFFECTIVE que
+// listenFileAttente ci-dessus, borné à la fenêtre de validité d'un billet
+// (un billet plus vieux ne peut de toute façon plus être réutilisé pour
+// aujourd'hui, cf. trouverBilletValidePourDate) plutôt qu'à minuit.
+export const listenBilletsDuJour = (etablissementId, callback) => {
+  let unsubscribe = () => {};
+  let annule = false;
+  getSettings(etablissementId).then(({ dureeValiditeBilletJours }) => {
+    if (annule) return;
+    const seuil = new Date();
+    seuil.setDate(seuil.getDate() - dureeValiditeBilletJours);
+    const q = query(
+      collection(db, 'billets_session'),
+      where('etablissementId', '==', etablissementId),
+      where('createdAt', '>=', Timestamp.fromDate(seuil)),
+      orderBy('createdAt', 'desc'),
+    );
+    unsubscribe = onSnapshot(q, (snap) => callback(
+      snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((b) => estAujourdhui(heureEffective(b))),
+    ));
+  });
+  return () => { annule = true; unsubscribe(); };
 };
 
 export const listenFileAttente = (etablissementId, serviceId, callback) => {
