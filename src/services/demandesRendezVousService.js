@@ -31,7 +31,7 @@ export const listenDemandesEnAttente = (etablissementId, callback) => {
 // téléconsultation ne passe jamais physiquement à l'accueil et n'aura donc
 // jamais de billet — exiger un billet pour cette voie casserait entièrement
 // la téléconsultation, déjà en production.
-export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateHeure, patientUid, type }, etablissementId, actor) => {
+export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateHeure, patientUid, patientFicheId, type }, etablissementId, actor) => {
   if (!dateHeure) throw new Error('DATE_REQUISE');
   // #nouveau (demande utilisateur, "la confirmation par l'accueil échoue
   // avec message d'erreur lorsque l'heure de rendez-vous est déjà passée si
@@ -40,7 +40,13 @@ export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateH
   if (new Date(dateHeure).getTime() < Date.now()) throw new Error('DATE_PASSEE');
   let billetId = null;
   if (type !== 'teleconsultation') {
-    const fiche = patientUid ? await trouverFicheParPatientUid(patientUid, etablissementId) : null;
+    // #nouveau (demande utilisateur, "un bébé ou une personne âgée sans
+    // compte doit aussi pouvoir être pris en compte") : une demande faite
+    // par un tuteur POUR UN PROCHE porte déjà l'id de sa fiche — jamais de
+    // correspondance CNI à faire (le proche n'a ni CNI ni compte propre).
+    const fiche = patientFicheId
+      ? { id: patientFicheId }
+      : (patientUid ? await trouverFicheParPatientUid(patientUid, etablissementId) : null);
     if (!fiche) throw new Error('AUCUNE_FICHE_PATIENT');
     const billet = await trouverBilletValidePourDate(fiche.id, etablissementId, dateHeure);
     if (!billet) throw new Error('AUCUN_BILLET_VALIDE');

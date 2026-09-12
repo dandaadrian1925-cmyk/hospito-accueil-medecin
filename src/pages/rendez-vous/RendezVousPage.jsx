@@ -88,7 +88,7 @@ function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
     try {
       await confirmerDemande(demandeEnCours.id, {
         medecinId: medecin?.uid, medecinNom: medecin?.nom, dateHeure: form.dateHeure,
-        patientUid: demandeEnCours.patientUid, type: demandeEnCours.type,
+        patientUid: demandeEnCours.patientUid, patientFicheId: demandeEnCours.patientFicheId, type: demandeEnCours.type,
       }, etablissementId, actor);
       toast.success('Demande confirmée');
       setDemandeEnCours(null);
