@@ -98,14 +98,29 @@ export const trouverBilletValidePourDate = async (patientId, etablissementId, da
     where('patientId', '==', patientId),
   ));
   const cibleMs = new Date(dateCible).getTime();
-  return snap.docs
+  const candidats = snap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
-    .find((b) => {
+    .filter((b) => {
       const creeMs = b.createdAt?.toDate?.()?.getTime();
       if (!creeMs) return false;
       const expireMs = creeMs + dureeValiditeBilletJours * 24 * 3600 * 1000;
       return cibleMs >= creeMs && cibleMs <= expireMs;
-    }) || null;
+    })
+    // #corrigé (audit, "un patient avec 2 billets valides simultanément —
+    // find() retombait arbitrairement sur le premier document renvoyé par
+    // Firestore, ordre non garanti") : confirmerDemande réassigne le billet
+    // trouvé ici à un AUTRE rendez-vous (medecinId/dateHeure), en l'effaçant
+    // au passage — repiquer un billet 'pret' (activement en file d'attente
+    // AUJOURD'HUI, patient physiquement présent) le ferait silencieusement
+    // disparaître de la file réelle. Ne jamais préférer un billet 'pret'
+    // tant qu'une autre option valide existe pour cette date cible.
+    .sort((a, b) => {
+      const aPret = a.statut === 'pret' ? 1 : 0;
+      const bPret = b.statut === 'pret' ? 1 : 0;
+      if (aPret !== bPret) return aPret - bPret;
+      return (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0);
+    });
+  return candidats[0] || null;
 };
 
 // `medecinId`/`medecinNom` optionnels (demande utilisateur, "file d'attente

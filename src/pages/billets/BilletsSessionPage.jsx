@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { buildPatientsQuery } from '../../services/patientsService';
 import { listenServices } from '../../services/litsService';
 import { listerMedecinsDuService } from '../../services/demandesRendezVousService';
-import { listenBilletsDuJour, creerBillet, saisirParametres } from '../../services/billetsSessionService';
+import { listenBilletsDuJour, creerBillet, saisirParametres, trouverBilletActifDuJour } from '../../services/billetsSessionService';
 import StatusBadge from '../../components/common/StatusBadge';
 import EmptyState from '../../components/common/EmptyState';
 import Loader from '../../components/common/Loader';
@@ -24,6 +24,40 @@ const PARAMETRES_VIDE = { temperature: '', tension: '', poids: '', pouls: '' };
 
 // Insensible aux accents/casse — "Ndongo" doit retrouver "N'Dongo" ou "NDONGO".
 const normaliser = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+// Factorisé (audit, "carte billet réutilisable pour l'existant ET la liste
+// du jour") : même rendu, que le billet ait été créé aujourd'hui ou non.
+function BilletCard({ b, onSaisirParametres }) {
+  return (
+    <div className="glass-card-elevated p-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold text-foreground">{b.patientNom}</span>
+        <StatusBadge label={LABEL_STATUT[b.statut]} tone={TONE_STATUT[b.statut]} />
+      </div>
+      <p className="text-sm text-muted-foreground">{b.serviceNom}</p>
+      {b.statut === 'a_payer' && (
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/paiement">Aller à Paiement au guichet</Link>
+        </Button>
+      )}
+      {b.statut !== 'a_payer' && (
+        <div>
+          {b.parametres ? (
+            <p className="text-xs text-muted-foreground">
+              {b.parametres.temperature && `${b.parametres.temperature}°C · `}
+              {b.parametres.tension && `${b.parametres.tension} · `}
+              {b.parametres.poids && `${b.parametres.poids}kg`}
+            </p>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => onSaisirParametres(b)}>
+              <Activity size={14} /> Saisir les paramètres
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function BilletsSessionPage() {
   const { user, userProfile, etablissementId } = useAuth();
@@ -42,6 +76,22 @@ export default function BilletsSessionPage() {
   const [billetOuvert, setBilletOuvert] = useState(null);
   const [parametres, setParametres] = useState(PARAMETRES_VIDE);
   const [savingParametres, setSavingParametres] = useState(false);
+  // #corrigé (audit, "un billet payé il y a 5 jours et jamais consulté
+  // devient introuvable dans toute l'UI de gestion, qui ne montre que
+  // 'aujourd'hui'") : vérifié dès la sélection du patient (pas seulement
+  // au clic sur "Créer", où l'erreur ne menait nulle part) — un billet actif
+  // existant, même créé un autre jour, est affiché ici et reste actionnable
+  // (paiement/paramètres), au lieu d'un blocage sans recours.
+  const [billetActifExistant, setBilletActifExistant] = useState(null);
+
+  useEffect(() => {
+    if (!patientSelectionne) { setBilletActifExistant(null); return; }
+    let annule = false;
+    trouverBilletActifDuJour(patientSelectionne.id, etablissementId)
+      .then((b) => { if (!annule) setBilletActifExistant(b); })
+      .catch(() => { if (!annule) setBilletActifExistant(null); });
+    return () => { annule = true; };
+  }, [patientSelectionne, etablissementId]);
 
   useEffect(() => {
     if (!etablissementId) return;
@@ -104,7 +154,7 @@ export default function BilletsSessionPage() {
       setServiceId('');
     } catch (e) {
       toast.error(e.message === 'BILLET_NON_EXPIRE'
-        ? 'Ce patient a déjà un billet actif aujourd\'hui — retrouvez-le dans la liste ci-dessous plutôt que d\'en recréer un.'
+        ? 'Ce patient a déjà un billet actif — voir ci-dessus plutôt que d\'en recréer un.'
         : (e.message || 'Erreur'));
     } finally {
       setCreation(false);
@@ -203,7 +253,14 @@ export default function BilletsSessionPage() {
             </Select>
           </div>
         )}
-        <Button onClick={creer} disabled={creation}>{creation ? 'Création…' : 'Créer le billet'}</Button>
+        {billetActifExistant ? (
+          <div className="space-y-2">
+            <p className="text-sm text-warning font-medium">Ce patient a déjà un billet actif — pas besoin d'en recréer un :</p>
+            <BilletCard b={billetActifExistant} onSaisirParametres={ouvrirParametres} />
+          </div>
+        ) : (
+          <Button onClick={creer} disabled={creation || !patientSelectionne}>{creation ? 'Création…' : 'Créer le billet'}</Button>
+        )}
       </div>
 
       <div className="space-y-3">
@@ -212,35 +269,7 @@ export default function BilletsSessionPage() {
           <EmptyState title="Aucun billet aujourd'hui" description="Les patients accueillis aujourd'hui apparaîtront ici." />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {billets.map((b) => (
-              <div key={b.id} className="glass-card-elevated p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-foreground">{b.patientNom}</span>
-                  <StatusBadge label={LABEL_STATUT[b.statut]} tone={TONE_STATUT[b.statut]} />
-                </div>
-                <p className="text-sm text-muted-foreground">{b.serviceNom}</p>
-                {b.statut === 'a_payer' && (
-                  <Button variant="outline" size="sm" asChild>
-                    <Link to="/paiement">Aller à Paiement au guichet</Link>
-                  </Button>
-                )}
-                {b.statut !== 'a_payer' && (
-                  <div>
-                    {b.parametres ? (
-                      <p className="text-xs text-muted-foreground">
-                        {b.parametres.temperature && `${b.parametres.temperature}°C · `}
-                        {b.parametres.tension && `${b.parametres.tension} · `}
-                        {b.parametres.poids && `${b.parametres.poids}kg`}
-                      </p>
-                    ) : (
-                      <Button variant="outline" size="sm" onClick={() => ouvrirParametres(b)}>
-                        <Activity size={14} /> Saisir les paramètres
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
+            {billets.map((b) => <BilletCard key={b.id} b={b} onSaisirParametres={ouvrirParametres} />)}
           </div>
         )}
       </div>
