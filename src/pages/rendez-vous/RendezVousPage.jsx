@@ -9,7 +9,7 @@ import { STATUTS_RDV, buildRendezVousQuery, creerRendezVous, changerStatutRendez
 import {
   listenDemandesEnAttente, confirmerDemande, refuserDemande, listerMedecinsDuService,
 } from '../../services/demandesRendezVousService';
-import { estDeGardeSelonHoraires } from '../../services/planningService';
+import { estDeGardeSelonHoraires, JOURS_SEMAINE } from '../../services/planningService';
 import { useFirestorePagination } from '../../hooks/useFirestorePagination';
 import DataTable from '../../components/common/DataTable';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -63,7 +63,23 @@ function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
     return new Set(medecins.filter((m) => estDeGardeSelonHoraires(m.horairesHabituels, form.dateHeure)).map((m) => m.uid));
   }, [medecins, form.dateHeure]);
 
-  const medecinsProposes = medecinsDeGarde?.size ? medecins.filter((m) => medecinsDeGarde.has(m.uid)) : medecins;
+  // #corrigé (retour utilisateur, "pourquoi la préférence n'apparaît pas
+  // dans la liste ?") : le patient choisit sa préférence par simple DATE
+  // (pas d'heure) côté hospito-patient, mais la confirmation préremplissait
+  // une heure fixe "09:00" — si le créneau réel du médecin préféré ce
+  // jour-là ne couvre pas 9h (ex. horaires d'après-midi), le filtre "de
+  // garde" l'excluait silencieusement de la liste, au profit d'un médecin
+  // sans rapport dont les horaires couvraient 9h. Le médecin préféré du
+  // patient reste désormais toujours proposable, même hors de son horaire
+  // habituel à l'heure actuellement sélectionnée (l'accueil ajuste l'heure
+  // si besoin) — voir aussi l'effet ci-dessous qui préremplit la VRAIE
+  // heure de son créneau plutôt que 09:00 par défaut.
+  const medecinsProposes = (() => {
+    const base = medecinsDeGarde?.size ? medecins.filter((m) => medecinsDeGarde.has(m.uid)) : medecins;
+    if (!demandeEnCours?.medecinPrefereId || base.some((m) => m.uid === demandeEnCours.medecinPrefereId)) return base;
+    const prefere = medecins.find((m) => m.uid === demandeEnCours.medecinPrefereId);
+    return prefere ? [prefere, ...base] : base;
+  })();
   const planningRenseigne = !!medecinsDeGarde?.size;
 
   const ouvrirConfirmation = (d) => {
@@ -76,6 +92,21 @@ function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
       dateHeure: d.dateSouhaitee ? `${d.dateSouhaitee}T09:00` : '',
     });
   };
+
+  // Une fois les médecins du service chargés (après ouvrirConfirmation, cf.
+  // effet ci-dessus), remplace le "09:00" par défaut par la VRAIE heure de
+  // début du créneau du médecin préféré ce jour-là, si connue — seulement
+  // si l'accueil n'a pas déjà modifié l'heure entre-temps.
+  useEffect(() => {
+    if (!demandeEnCours?.medecinPrefereId || !demandeEnCours?.dateSouhaitee) return;
+    const defaut = `${demandeEnCours.dateSouhaitee}T09:00`;
+    if (form.dateHeure !== defaut) return;
+    const prefere = medecins.find((m) => m.uid === demandeEnCours.medecinPrefereId);
+    const jour = JOURS_SEMAINE[new Date(`${demandeEnCours.dateSouhaitee}T00:00`).getDay()];
+    const horaire = prefere?.horairesHabituels?.find((h) => h.jour === jour);
+    if (horaire?.heureDebut) setForm((f) => ({ ...f, dateHeure: `${demandeEnCours.dateSouhaitee}T${horaire.heureDebut}` }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [medecins, demandeEnCours]);
 
   const confirmer = async () => {
     if (!form.dateHeure || (demandeEnCours.type === 'teleconsultation' && !form.medecinId)) {

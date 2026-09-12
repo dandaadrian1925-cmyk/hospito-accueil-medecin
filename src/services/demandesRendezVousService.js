@@ -56,21 +56,27 @@ export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateH
   // mais sans forcément porter le bon médecin ni l'heure de CE rendez-vous
   // — on le met à jour pour qu'il apparaisse dans la bonne file (cf.
   // billetsSessionService.js::listenFileAttente, hospito-medecin et
-  // hospito-accueil-medecin, filtrées/triées sur ces mêmes champs).
-  // #corrigé (demande utilisateur, "on prend ses paramètres et dès que
-  // c'est enregistré c'est marqué prêt") : un billet trouvé encore 'pret'
-  // ou 'consulte' vient forcément d'UNE AUTRE venue (sa fenêtre de
-  // validité couvre plusieurs jours) — repasse à 'arrive' (paiement/passage
-  // déjà fait, paramètres pas encore pris POUR CE rendez-vous) et efface
-  // les anciens paramètres/traces de consultation, pour ne jamais laisser
-  // croire que ce nouveau rendez-vous est déjà prêt ou déjà vu. Un billet
-  // encore 'a_payer' reste 'a_payer' — le paiement doit toujours se faire
-  // avant l'entrée en file.
+  // hospito-accueil-medecin, filtrées/triées sur ces mêmes champs). Un
+  // billet trouvé encore 'pret' ou 'consulte' vient forcément d'UNE AUTRE
+  // venue (sa fenêtre de validité couvre plusieurs jours) — efface les
+  // anciens paramètres/traces de consultation, pour ne jamais laisser
+  // croire que ce nouveau rendez-vous est déjà vu.
+  // #corrigé (retour utilisateur, "la file d'attente reste vide même après
+  // avoir confirmé un RDV aujourd'hui, comme si ça partait dans le vide") :
+  // un correctif précédent, pensé pour le check-in physique au guichet
+  // (créer un billet → prendre les paramètres → 'pret'), avait aussi fait
+  // passer CE billet à 'arrive' au lieu de 'pret' — cassant la promesse
+  // documentée ci-dessus ("entre DIRECTEMENT dans la file d'attente") pour
+  // toute demande de RDV déjà payée. Une confirmation de RDV n'est PAS un
+  // check-in physique à refaire : le paiement (ou l'absence de tarif) déjà
+  // constaté au moment où ce billet a été validé suffit, il rentre donc
+  // directement en 'pret'. Un billet encore 'a_payer' reste 'a_payer' — le
+  // paiement doit toujours se faire avant l'entrée en file.
   const dejaPayeOuVu = billet.statut !== 'a_payer';
   await updateDoc(doc(db, 'billets_session', billet.id), {
     medecinId: medecinId || null, medecinNom: medecinNom || null,
     dateHeure: Timestamp.fromDate(new Date(dateHeure)), demandeId,
-    ...(dejaPayeOuVu ? { statut: 'arrive', parametres: null, parametresAt: null, consultePar: null, consulteAt: null } : {}),
+    ...(dejaPayeOuVu ? { statut: 'pret', parametres: null, parametresAt: null, consultePar: null, consulteAt: null } : {}),
   });
 
   await updateDoc(doc(db, 'demandes_rendez_vous', demandeId), {
