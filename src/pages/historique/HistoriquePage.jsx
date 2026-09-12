@@ -11,8 +11,14 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../components/ui/select';
 
-const LABEL_STATUT = { planifie: 'Planifié', confirme: 'Confirmé', annule: 'Annulé', termine: 'Terminé', absent: 'Non honoré', teleconsultation: 'Téléconsultation' };
-const TONE_STATUT = { planifie: 'amber', confirme: 'blue', annule: 'red', termine: 'green', absent: 'red', teleconsultation: 'blue' };
+const LABEL_STATUT = {
+  planifie: 'Planifié', confirme: 'Confirmé', annule: 'Annulé', termine: 'Terminé', absent: 'Non honoré',
+  teleconsultation: 'Téléconsultation', en_attente: 'Demande en attente', refuse: 'Demande refusée',
+};
+const TONE_STATUT = {
+  planifie: 'amber', confirme: 'blue', annule: 'red', termine: 'green', absent: 'red',
+  teleconsultation: 'blue', en_attente: 'amber', refuse: 'red',
+};
 
 const ilYA = (jours) => {
   const d = new Date();
@@ -84,6 +90,9 @@ export default function HistoriquePage() {
           <History size={22} className="text-primary" /> Historique
         </h1>
         <p className="text-muted-foreground mt-1">Rendez-vous passés et expirés — guichet et en ligne, tous statuts confondus.</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Pour une demande encore en attente ou refusée (aucun rendez-vous confirmé), la colonne Date/heure indique la date de la DEMANDE, pas d'un rendez-vous.
+        </p>
       </div>
 
       <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-end">
