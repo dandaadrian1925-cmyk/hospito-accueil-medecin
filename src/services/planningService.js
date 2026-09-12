@@ -53,11 +53,16 @@ const syncMedecinPublic = async (affiliationId, etablissementId) => {
     return;
   }
   const userSnap = await getDoc(doc(db, 'users', a.userId));
+  // #corrigé (re-audit, "medecins_publics ne transporte jamais de photo") :
+  // même champ que les deux autres forks (hospito-admin/hospito-super-admin)
+  // — sans lui, ce setDoc complet effacerait silencieusement une photo déjà
+  // synchronisée ailleurs.
   await setDoc(doc(db, 'medecins_publics', affiliationId), {
     uid: a.userId, etablissementId, etablissementNom: a.etablissementNom || null,
     nom: userSnap.exists() ? userSnap.data().displayName || null : null,
     serviceId: a.serviceId || null, serviceNom: a.service || null,
     horairesHabituels: a.horairesHabituels || null,
+    photoURL: a.photoUrl || null,
     updatedAt: serverTimestamp(),
   });
 };
