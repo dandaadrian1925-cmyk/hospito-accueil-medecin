@@ -34,6 +34,7 @@ export default function HistoriquePage() {
   const [dateFin, setDateFin] = useState(aujourdhui());
   const [medecins, setMedecins] = useState([]);
   const [medecinId, setMedecinId] = useState('');
+  const [statut, setStatut] = useState('');
   const [recherche, setRecherche] = useState('');
   const [rows, setRows] = useState(null);
 
@@ -63,8 +64,9 @@ export default function HistoriquePage() {
     return rows
       .filter((r) => !monServiceId || !r.serviceId || r.serviceId === monServiceId)
       .filter((r) => !medecinId || r.medecinId === medecinId)
+      .filter((r) => !statut || r.statut === statut)
       .filter((r) => !q || (r.patientNom || '').toLowerCase().includes(q));
-  }, [rows, monServiceId, medecinId, recherche]);
+  }, [rows, monServiceId, medecinId, statut, recherche]);
 
   const columns = [
     { key: 'dateHeure', label: 'Date / heure', render: (r) => r.dateHeure?.toDate ? r.dateHeure.toDate().toLocaleString('fr-FR') : '—' },
@@ -105,6 +107,16 @@ export default function HistoriquePage() {
             </Select>
           </div>
         )}
+        <div className="space-y-1.5 sm:w-48">
+          <Label>Statut</Label>
+          <Select value={statut || 'tous'} onValueChange={(v) => setStatut(v === 'tous' ? '' : v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="tous">Tous statuts</SelectItem>
+              {Object.entries(LABEL_STATUT).map(([valeur, label]) => <SelectItem key={valeur} value={valeur}>{label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="relative flex-1 min-w-[200px]">
           <Label className="mb-1.5 block">Rechercher un patient</Label>
           <Search size={16} className="absolute left-3 top-[calc(50%+9px)] -translate-y-1/2 text-muted-foreground" />
