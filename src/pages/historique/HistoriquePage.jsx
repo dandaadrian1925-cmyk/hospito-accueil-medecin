@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { History, Search } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import { chargerHistoriqueRdv } from '../../services/historiqueService';
 import { listerMedecinsDuService } from '../../services/demandesRendezVousService';
@@ -44,7 +45,15 @@ export default function HistoriquePage() {
   const charger = () => {
     if (!etablissementId || !dateDebut || !dateFin) return;
     setRows(null);
-    chargerHistoriqueRdv(etablissementId, dateDebut, dateFin).then(setRows).catch(() => setRows([]));
+    chargerHistoriqueRdv(etablissementId, dateDebut, dateFin).then(setRows).catch((e) => {
+      // #corrigé (retour utilisateur, "rien ne s'affiche alors que j'ai déjà
+      // pris des RDV") : avalait silencieusement toute erreur (ex. index
+      // Firestore encore en construction juste après le déploiement) —
+      // indiscernable d'un historique réellement vide. Affichée maintenant.
+      console.error('chargerHistoriqueRdv', e);
+      toast.error(e.message?.includes('index') ? "Index Firestore encore en construction, réessayez dans une minute." : (e.message || 'Erreur de chargement'), { duration: 8000 });
+      setRows([]);
+    });
   };
   useEffect(charger, [etablissementId, dateDebut, dateFin]);
 
@@ -91,7 +100,7 @@ export default function HistoriquePage() {
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="tous">Tous les médecins</SelectItem>
-                {medecins.map((m) => <SelectItem key={m.uid} value={m.uid}>Dr {m.nom}</SelectItem>)}
+                {medecins.map((m) => <SelectItem key={m.uid} value={m.uid}>{m.nom}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
