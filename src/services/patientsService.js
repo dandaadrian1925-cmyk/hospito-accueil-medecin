@@ -15,6 +15,10 @@ export const buildPatientsQuery = (etablissementId) =>
 // (même clé déjà utilisée ailleurs dans le projet pour relier compte app et
 // fiche interne). Retourne null si le patient n'a encore aucune fiche dans
 // CET établissement (jamais physiquement venu).
+// #corrigé (re-audit, "un doublon fusionné garde le même CNI — sans filtrer
+// fusionneDans, cette résolution peut retomber sur la fiche fusionnée
+// (stale) plutôt que sur la fiche conservée") : même garde que
+// hospito-admin::trouverPatientParCni.
 export const trouverFicheParPatientUid = async (patientUid, etablissementId) => {
   const userSnap = await getDoc(doc(db, 'users', patientUid));
   const cni = userSnap.exists() ? userSnap.data().numeroIdentiteNational : null;
@@ -24,5 +28,6 @@ export const trouverFicheParPatientUid = async (patientUid, etablissementId) => 
     where('etablissementId', '==', etablissementId),
     where('numeroIdentiteNational', '==', cni),
   ));
-  return snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+  const match = snap.docs.find((d) => !d.data().fusionneDans);
+  return match ? { id: match.id, ...match.data() } : null;
 };
