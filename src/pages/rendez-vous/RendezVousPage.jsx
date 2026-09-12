@@ -75,7 +75,6 @@ function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
       medecinId: d.medecinPrefereId || '',
       dateHeure: d.dateSouhaitee ? `${d.dateSouhaitee}T09:00` : '',
     });
-    setMedecinsDeGarde(null);
   };
 
   const confirmer = async () => {
