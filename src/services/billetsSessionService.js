@@ -155,6 +155,19 @@ export const creerBillet = async ({ patientId, patientNom, serviceId, serviceNom
   ));
   const tarif = tarifSnap.empty ? null : tarifSnap.docs[0].data();
 
+  // #corrigé (décision utilisateur, "c'est uniquement l'accueil qui crée le
+  // billet de consultation et le patient voit ça dans ses factures et paie
+  // à distance") : la facture posait jusqu'ici patientUid: null
+  // systématiquement — même quand la fiche a bien un compte hospito-patient
+  // lié (résolu par CNI, cf. hospito-admin::createPatient/updatePatient) —
+  // rendant cette facture invisible dans "Mon compte > Factures" du
+  // patient. Nécessaire en particulier pour la téléconsultation, qui exige
+  // désormais un billet valide alors même que le patient n'est jamais
+  // passé physiquement : l'accueil crée le billet à partir de la demande,
+  // et le patient doit pouvoir payer à distance.
+  const ficheSnap = await getDoc(doc(db, 'patients', patientId));
+  const patientUid = ficheSnap.exists() ? (ficheSnap.data().patientUid || null) : null;
+
   const billetRef = doc(collection(db, 'billets_session'));
   const batch = writeBatch(db);
   batch.set(billetRef, {
@@ -169,7 +182,7 @@ export const creerBillet = async ({ patientId, patientNom, serviceId, serviceNom
   if (tarif) {
     const factureRef = doc(collection(db, 'factures'));
     batch.set(factureRef, {
-      etablissementId, patientUid: null, patientNom,
+      etablissementId, patientUid, patientNom,
       // #nouveau (demande utilisateur, "Facturation filtrée par service géré") :
       // serviceId/serviceNom déjà disponibles ici (paramètres de cette
       // fonction), simplement jamais écrits sur la facture jusqu'ici.
