@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase/config';
 import { listenRendezVous } from '../../services/rendezVousService';
 import { listenDemandesConfirmees } from '../../services/demandesRendezVousService';
+import { buildPatientsQuery } from '../../services/patientsService';
 import {
   trouverBilletValidePourDate, creerBillet, saisirParametres, listenBilletsParService,
 } from '../../services/billetsSessionService';
@@ -71,6 +72,7 @@ export default function FileAttentePage() {
   const [rendezVous, setRendezVous] = useState(null);
   const [demandesConfirmees, setDemandesConfirmees] = useState(null);
   const [billetsService, setBilletsService] = useState(null);
+  const [patients, setPatients] = useState(null);
   const [periode, setPeriode] = useState('aujourdhui');
   // #nouveau (demande utilisateur, "filtre par défaut sur l'état prêt pour
   // aujourd'hui, donc les patients dont les paramètres ont déjà été
@@ -102,14 +104,32 @@ export default function FileAttentePage() {
     return listenBilletsParService(etablissementId, monServiceId, setBilletsService);
   }, [etablissementId, monServiceId]);
 
+  // #corrigé (retour utilisateur, "aucun billet lié à ce rendez-vous en
+  // ligne — problème à signaler") : une demande en ligne ne porte que le
+  // compte du patient (patientUid), pas l'id de sa fiche `patients/{id}`
+  // (utilisé par billets_session.patientId) — sans cette table de
+  // correspondance, une ligne "RDV en ligne" ne pouvait JAMAIS retrouver son
+  // billet autrement que par demandeId, or ce champ n'est réécrit que sur le
+  // DERNIER rendez-vous confirmé du patient (confirmerDemande réutilise le
+  // même billet) : toute confirmation plus ancienne pour le même patient
+  // perdait ce lien. Résolu une fois pour toutes via la liste des patients
+  // (déjà disponible, même requête que BilletsSessionPage/RendezVousPage).
+  useEffect(() => {
+    if (!etablissementId) return;
+    getDocs(buildPatientsQuery(etablissementId)).then((snap) => setPatients(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+  }, [etablissementId]);
+
+  const patientIdParUid = useMemo(
+    () => new Map((patients || []).filter((p) => p.patientUid).map((p) => [p.patientUid, p.id])),
+    [patients],
+  );
+
   // #nouveau (demande utilisateur, "filtre par défaut sur l'état prêt") :
   // deux façons de retrouver le billet d'un rendez-vous confirmé — par
-  // demandeId (fiable à 100%, posé par confirmerDemande) pour une demande en
-  // ligne, ou par le billet le plus récent du même patient pour un RDV
-  // guichet (pas de back-reference stockée, cf. creerRendezVous). Suffisant
-  // pour l'affichage/filtrage — la résolution exacte au clic (ouvrirParametres
-  // ci-dessous, via trouverBilletValidePourDate) reste la source de vérité
-  // au moment d'écrire.
+  // demandeId (posé par confirmerDemande, mais seulement le PLUS RÉCENT pour
+  // un patient donné) ou par le billet le plus récent du même patient (fiche)
+  // — cette seconde voie reste fiable même quand demandeId a été écrasé par
+  // une confirmation plus récente pour le même patient.
   const { billetsParDemandeId, billetParPatientLePlusRecent } = useMemo(() => {
     const parDemande = new Map();
     const parPatient = new Map();
@@ -144,36 +164,42 @@ export default function FileAttentePage() {
       }));
     const enLigne = demandesConfirmees
       .filter((d) => d.serviceId === monServiceId)
-      .map((d) => ({
-        id: `demande_${d.id}`,
-        rawId: d.id,
-        patientId: null,
-        patientNom: d.patientNom,
-        heure: d.dateHeure?.toDate?.() || null,
-        service: d.serviceNom,
-        medecinId: d.medecinId || null,
-        medecinNom: d.medecinNom,
-        motif: d.motif,
-        statutLabel: 'Confirmé',
-        statutTone: 'green',
-        origine: d.type === 'teleconsultation' ? 'teleconsultation' : 'en_ligne',
-        billetStatut: billetsParDemandeId.get(d.id)?.statut || 'aucun',
-      }));
+      .map((d) => {
+        const patientId = d.patientFicheId || patientIdParUid.get(d.patientUid) || null;
+        const billet = billetsParDemandeId.get(d.id) || (patientId ? billetParPatientLePlusRecent.get(patientId) : null);
+        return {
+          id: `demande_${d.id}`,
+          rawId: d.id,
+          patientId,
+          patientNom: d.patientNom,
+          heure: d.dateHeure?.toDate?.() || null,
+          service: d.serviceNom,
+          medecinId: d.medecinId || null,
+          medecinNom: d.medecinNom,
+          motif: d.motif,
+          statutLabel: 'Confirmé',
+          statutTone: 'green',
+          origine: d.type === 'teleconsultation' ? 'teleconsultation' : 'en_ligne',
+          billetStatut: billet?.statut || 'aucun',
+        };
+      });
     return [...duGuichet, ...enLigne]
       .filter((r) => r.heure && r.heure >= dateDebut && r.heure <= dateFin)
       .filter((r) => etatFiltre === 'tous' || r.billetStatut === etatFiltre)
       .sort((a, b) => a.heure - b.heure);
-  }, [rendezVous, demandesConfirmees, billetsService, billetsParDemandeId, billetParPatientLePlusRecent, monServiceId, dateDebut, dateFin, etatFiltre]);
+  }, [rendezVous, demandesConfirmees, billetsService, billetsParDemandeId, billetParPatientLePlusRecent, patientIdParUid, monServiceId, dateDebut, dateFin, etatFiltre]);
 
   // #nouveau (demande utilisateur, "quand les patients se présentent à
   // l'accueil pour honorer le rendez-vous, on doit prendre leurs paramètres
   // — un popup pour saisir les paramètres et envoyer dans la file d'attente
   // du médecin") : le billet_session est ce qui fait réellement entrer un
-  // patient dans la file du MÉDECIN (statut 'pret', cf. saisirParametres) —
-  // on retrouve celui déjà lié à ce rendez-vous (une demande en ligne
-  // confirmée en a TOUJOURS un, cf. confirmerDemande ; un RDV guichet peut
-  // ne pas en avoir si le patient n'était jamais passé avant), et on le crée
-  // à la volée sinon.
+  // patient dans la file du MÉDECIN (statut 'pret', cf. saisirParametres).
+  // #corrigé (retour utilisateur, "aucun billet lié à ce rendez-vous en
+  // ligne") : row.patientId est désormais toujours résolu en amont (fiche
+  // patients/{id}, cf. patientIdParUid ci-dessus) pour les DEUX origines —
+  // plus besoin de brancher sur `row.origine` ici, une seule recherche par
+  // demandeId (le plus précis) puis par patient (fiable même si demandeId a
+  // été réécrit par une confirmation plus récente pour le même patient).
   const ouvrirParametres = async (row) => {
     setRdvOuvert(row);
     setParametres(PARAMETRES_VIDE);
@@ -181,15 +207,16 @@ export default function FileAttentePage() {
     setResolutionEnCours(true);
     try {
       let billet = null;
-      if (row.origine === 'guichet') {
-        billet = row.heure ? await trouverBilletValidePourDate(row.patientId, etablissementId, row.heure, monServiceId) : null;
-      } else {
+      if (row.origine !== 'guichet') {
         const snap = await getDocs(query(
           collection(db, 'billets_session'),
           where('etablissementId', '==', etablissementId),
           where('demandeId', '==', row.rawId),
         ));
         billet = snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+      }
+      if (!billet && row.patientId && row.heure) {
+        billet = await trouverBilletValidePourDate(row.patientId, etablissementId, row.heure, monServiceId);
       }
       setBilletResolu(billet);
       if (billet?.parametres) setParametres(billet.parametres);
@@ -205,7 +232,7 @@ export default function FileAttentePage() {
     try {
       let billetId = billetResolu?.id;
       if (!billetId) {
-        if (!rdvOuvert.patientId) throw new Error('Aucun billet de consultation lié à ce rendez-vous en ligne — problème à signaler.');
+        if (!rdvOuvert.patientId) throw new Error("Ce patient n'a pas de fiche dans cet établissement — impossible de créer un billet de consultation.");
         const { billetId: nouveauId } = await creerBillet({
           patientId: rdvOuvert.patientId, patientNom: rdvOuvert.patientNom,
           serviceId: monServiceId, serviceNom: rdvOuvert.service,
