@@ -1,8 +1,9 @@
 import {
-  collection, doc, query, where, orderBy, onSnapshot, writeBatch, serverTimestamp,
+  collection, doc, getDoc, query, where, orderBy, onSnapshot, writeBatch, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { logAction } from './auditService';
+import { creerNotification } from './notificationsService';
 
 // Paiement au guichet (§4.12/§4.15) — un patient sans accès à l'app (ou qui
 // préfère payer en espèces sur place) règle sa facture directement à
@@ -36,6 +37,23 @@ export const listenFacturesEnAttente = (etablissementId, callback) => {
 // ce que fait déjà le serveur pour un paiement en ligne (hospito-facture-
 // paiement). Autorisé côté règles (examens.allow update) pour accueil/admin
 // UNIQUEMENT sur cette transition précise de statut.
+// #nouveau (demande utilisateur, "toutes les notifications soient
+// fonctionnelles pour toutes les opérations") : jusqu'ici silencieux — le
+// patient ne recevait jamais de confirmation de paiement au guichet,
+// contrairement au dépôt CamPay (hospito-patient/walletService.js).
+const notifierPaiementFacture = async (factureId, libelle) => {
+  try {
+    const patientUid = (await getDoc(doc(db, 'factures', factureId))).data()?.patientUid;
+    if (patientUid) {
+      await creerNotification({
+        userId: patientUid, type: 'facture', titre: 'Paiement confirmé',
+        message: `Votre paiement${libelle ? ` (${libelle})` : ''} a bien été enregistré.`,
+        link: '/mon-compte/factures',
+      });
+    }
+  } catch { /* best-effort */ }
+};
+
 export const encaisserEnEspeces = async (factureId, etablissementId, actor, billetSessionId, examenId) => {
   const batch = writeBatch(db);
   batch.update(doc(db, 'factures', factureId), {
@@ -49,6 +67,7 @@ export const encaisserEnEspeces = async (factureId, etablissementId, actor, bill
   }
   await batch.commit();
   await logAction({ actor, etablissementId, action: 'facture.encaisser_especes', targetType: 'facture', targetId: factureId });
+  notifierPaiementFacture(factureId);
 };
 
 // Paiement Mobile Money fait HORS de l'app (le patient a payé par lui-même,
@@ -68,4 +87,5 @@ export const encaisserAvecPreuve = async (factureId, preuveUrl, etablissementId,
   }
   await batch.commit();
   await logAction({ actor, etablissementId, action: 'facture.encaisser_preuve', targetType: 'facture', targetId: factureId });
+  notifierPaiementFacture(factureId);
 };

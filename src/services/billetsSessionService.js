@@ -4,6 +4,7 @@ import {
 import { db } from '../firebase/config';
 import { logAction } from './auditService';
 import { getSettings } from './settingsService';
+import { creerNotification } from './notificationsService';
 
 // Billet de session — un par passage à l'accueil (§ parcours patient réel).
 // Le "coupon" décrit par l'utilisateur EST la facture elle-même : si un tarif
@@ -261,6 +262,17 @@ export const creerBillet = async ({ patientId, patientNom, serviceId, serviceNom
     actor, etablissementId, action: 'billet_session.creer', targetType: 'billet_session', targetId: billetRef.id,
     details: { serviceNom, aPayer: !!tarif },
   });
+  // #nouveau (demande utilisateur, "toutes les notifications soient
+  // fonctionnelles pour toutes les opérations") : le patient ne savait pas
+  // qu'une facture l'attendait tant qu'il n'ouvrait pas lui-même "Mes
+  // factures".
+  if (tarif && patientUid) {
+    creerNotification({
+      userId: patientUid, type: 'facture', titre: 'Facture en attente',
+      message: `Une facture (Consultation — ${serviceNom}) attend votre paiement.`,
+      link: '/mon-compte/factures',
+    });
+  }
   return { billetId: billetRef.id, statut: tarif ? 'a_payer' : 'arrive' };
 };
 
