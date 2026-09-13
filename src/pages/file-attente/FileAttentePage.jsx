@@ -6,7 +6,9 @@ import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase/config';
 import { listenRendezVous } from '../../services/rendezVousService';
 import { listenDemandesConfirmees } from '../../services/demandesRendezVousService';
-import { trouverBilletValidePourDate, creerBillet, saisirParametres } from '../../services/billetsSessionService';
+import {
+  trouverBilletValidePourDate, creerBillet, saisirParametres, listenBilletsParService,
+} from '../../services/billetsSessionService';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -44,6 +46,12 @@ const TONE_STATUT_GUICHET = { planifie: 'amber', confirme: 'green' };
 const LABEL_ORIGINE = { guichet: 'Guichet', en_ligne: 'RDV en ligne', teleconsultation: 'Téléconsultation' };
 const TONE_ORIGINE = { guichet: 'gray', en_ligne: 'blue', teleconsultation: 'blue' };
 
+// État du billet lié (§ billet de session) — 'aucun' = pas encore de billet
+// pour ce rendez-vous (patient pas encore présenté à l'accueil).
+const LABEL_ETAT = { a_payer: 'À payer', arrive: 'En attente des paramètres', pret: 'Prêt (paramètres saisis)', consulte: 'Consulté', aucun: 'Aucun billet' };
+const TONE_ETAT = { a_payer: 'amber', arrive: 'blue', pret: 'green', consulte: 'gray', aucun: 'gray' };
+const LABEL_FILTRE_ETAT = { tous: 'Tous les états', ...LABEL_ETAT };
+
 // #reconstruit (demande utilisateur, "la File d'attente doit contenir les
 // patients ayant un rendez-vous confirmé par l'accueil, avec toutes les
 // informations, en gardant les filtres de date actuels") : abandonne
@@ -62,7 +70,14 @@ export default function FileAttentePage() {
   const actor = { uid: user.uid, email: user.email };
   const [rendezVous, setRendezVous] = useState(null);
   const [demandesConfirmees, setDemandesConfirmees] = useState(null);
+  const [billetsService, setBilletsService] = useState(null);
   const [periode, setPeriode] = useState('aujourdhui');
+  // #nouveau (demande utilisateur, "filtre par défaut sur l'état prêt pour
+  // aujourd'hui, donc les patients dont les paramètres ont déjà été
+  // saisis") : 'pret' par défaut — se combine avec la période par défaut
+  // ("Aujourd'hui") pour montrer directement les patients déjà pris en
+  // charge par l'accueil aujourd'hui.
+  const [etatFiltre, setEtatFiltre] = useState('pret');
   const [rdvOuvert, setRdvOuvert] = useState(null);
   const [billetResolu, setBilletResolu] = useState(null);
   const [resolutionEnCours, setResolutionEnCours] = useState(false);
@@ -82,8 +97,34 @@ export default function FileAttentePage() {
 
   const monServiceId = userProfile?.serviceId;
 
+  useEffect(() => {
+    if (!monServiceId) return;
+    return listenBilletsParService(etablissementId, monServiceId, setBilletsService);
+  }, [etablissementId, monServiceId]);
+
+  // #nouveau (demande utilisateur, "filtre par défaut sur l'état prêt") :
+  // deux façons de retrouver le billet d'un rendez-vous confirmé — par
+  // demandeId (fiable à 100%, posé par confirmerDemande) pour une demande en
+  // ligne, ou par le billet le plus récent du même patient pour un RDV
+  // guichet (pas de back-reference stockée, cf. creerRendezVous). Suffisant
+  // pour l'affichage/filtrage — la résolution exacte au clic (ouvrirParametres
+  // ci-dessous, via trouverBilletValidePourDate) reste la source de vérité
+  // au moment d'écrire.
+  const { billetsParDemandeId, billetParPatientLePlusRecent } = useMemo(() => {
+    const parDemande = new Map();
+    const parPatient = new Map();
+    (billetsService || []).forEach((b) => {
+      if (b.demandeId) parDemande.set(b.demandeId, b);
+      if (b.patientId) {
+        const existant = parPatient.get(b.patientId);
+        if (!existant || (b.createdAt?.toMillis?.() || 0) > (existant.createdAt?.toMillis?.() || 0)) parPatient.set(b.patientId, b);
+      }
+    });
+    return { billetsParDemandeId: parDemande, billetParPatientLePlusRecent: parPatient };
+  }, [billetsService]);
+
   const rendezVousConfirmes = useMemo(() => {
-    if (!monServiceId || rendezVous === null || demandesConfirmees === null) return null;
+    if (!monServiceId || rendezVous === null || demandesConfirmees === null || billetsService === null) return null;
     const duGuichet = rendezVous
       .filter((r) => r.serviceId === monServiceId && (r.statut === 'planifie' || r.statut === 'confirme'))
       .map((r) => ({
@@ -99,6 +140,7 @@ export default function FileAttentePage() {
         statutLabel: LABEL_STATUT_GUICHET[r.statut],
         statutTone: TONE_STATUT_GUICHET[r.statut],
         origine: 'guichet',
+        billetStatut: billetParPatientLePlusRecent.get(r.patientId)?.statut || 'aucun',
       }));
     const enLigne = demandesConfirmees
       .filter((d) => d.serviceId === monServiceId)
@@ -115,11 +157,13 @@ export default function FileAttentePage() {
         statutLabel: 'Confirmé',
         statutTone: 'green',
         origine: d.type === 'teleconsultation' ? 'teleconsultation' : 'en_ligne',
+        billetStatut: billetsParDemandeId.get(d.id)?.statut || 'aucun',
       }));
     return [...duGuichet, ...enLigne]
       .filter((r) => r.heure && r.heure >= dateDebut && r.heure <= dateFin)
+      .filter((r) => etatFiltre === 'tous' || r.billetStatut === etatFiltre)
       .sort((a, b) => a.heure - b.heure);
-  }, [rendezVous, demandesConfirmees, monServiceId, dateDebut, dateFin]);
+  }, [rendezVous, demandesConfirmees, billetsService, billetsParDemandeId, billetParPatientLePlusRecent, monServiceId, dateDebut, dateFin, etatFiltre]);
 
   // #nouveau (demande utilisateur, "quand les patients se présentent à
   // l'accueil pour honorer le rendez-vous, on doit prendre leurs paramètres
@@ -221,6 +265,14 @@ export default function FileAttentePage() {
         )}
       </div>
 
+      <div className="flex flex-wrap gap-1.5">
+        {Object.keys(LABEL_FILTRE_ETAT).map((e) => (
+          <Button key={e} type="button" size="sm" variant={etatFiltre === e ? 'default' : 'outline'} onClick={() => setEtatFiltre(e)}>
+            {LABEL_FILTRE_ETAT[e]}
+          </Button>
+        ))}
+      </div>
+
       {rendezVousConfirmes === null ? (
         <Loader label="Chargement de la file d'attente…" />
       ) : !rendezVousConfirmes.length ? (
@@ -237,6 +289,7 @@ export default function FileAttentePage() {
                 <th className="px-3 py-2 font-medium">Motif</th>
                 <th className="px-3 py-2 font-medium">Origine</th>
                 <th className="px-3 py-2 font-medium">Statut</th>
+                <th className="px-3 py-2 font-medium">État</th>
               </tr>
             </thead>
             <tbody>
@@ -259,6 +312,7 @@ export default function FileAttentePage() {
                   <td className="px-3 py-2 text-muted-foreground">{r.motif || '—'}</td>
                   <td className="px-3 py-2"><StatusBadge label={LABEL_ORIGINE[r.origine]} tone={TONE_ORIGINE[r.origine]} /></td>
                   <td className="px-3 py-2"><StatusBadge label={r.statutLabel} tone={r.statutTone} /></td>
+                  <td className="px-3 py-2"><StatusBadge label={LABEL_ETAT[r.billetStatut]} tone={TONE_ETAT[r.billetStatut]} /></td>
                 </tr>
               ))}
             </tbody>

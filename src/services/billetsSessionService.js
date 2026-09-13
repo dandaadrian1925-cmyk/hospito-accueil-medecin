@@ -75,6 +75,23 @@ export const listenBilletsDuJour = (etablissementId, callback) => {
 // garde sa PROPRE copie de listenFileAttente (basée billets/statut 'pret',
 // la notion de "prêt pour consultation" reste pertinente côté médecin).
 
+// #nouveau (demande utilisateur, "filtre par défaut sur l'état prêt pour
+// aujourd'hui, donc les patients dont les paramètres ont déjà été saisis") :
+// FileAttentePage (accueil) a besoin de savoir, pour CHAQUE rendez-vous
+// confirmé affiché, l'état RÉEL de son billet (à payer / paramètres pas
+// encore pris / prêt / consulté) pour pouvoir filtrer dessus — un simple
+// listener, tous statuts, sur le service courant ; la mise en correspondance
+// rendez-vous ↔ billet se fait ensuite côté client (demandeId pour une
+// demande en ligne confirmée, patientId le plus récent pour un RDV guichet).
+export const listenBilletsParService = (etablissementId, serviceId, callback) => {
+  const q = query(
+    collection(db, 'billets_session'),
+    where('etablissementId', '==', etablissementId),
+    where('serviceId', '==', serviceId),
+  );
+  return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+};
+
 // #évolué (demande utilisateur, "durée de validité d'un billet configurable
 // par le sysadmin dans les paramètres métiers, 14 jours par défaut") : un
 // billet reste actif — bloquant la création d'un second pour ce même
