@@ -29,13 +29,23 @@ export const listenFacturesEnAttente = (etablissementId, callback) => {
 // [les paramètres] c'est marqué prêt") : le paiement ne suffit plus à
 // rendre le billet visible dans la file d'attente — seule la saisie des
 // paramètres (saisirParametres, billetsSessionService.js) le fait.
-export const encaisserEnEspeces = async (factureId, etablissementId, actor, billetSessionId) => {
+// #nouveau (demande utilisateur, "un examen ne doit être visible au
+// laboratoire que s'il est déjà payé") : examenId optionnel, même principe
+// que billetSessionId — un encaissement au guichet fait passer l'examen à
+// 'en_cours' (visible au laborantin), dans le MÊME writeBatch, exactement
+// ce que fait déjà le serveur pour un paiement en ligne (hospito-facture-
+// paiement). Autorisé côté règles (examens.allow update) pour accueil/admin
+// UNIQUEMENT sur cette transition précise de statut.
+export const encaisserEnEspeces = async (factureId, etablissementId, actor, billetSessionId, examenId) => {
   const batch = writeBatch(db);
   batch.update(doc(db, 'factures', factureId), {
     statut: 'payee', modePaiement: 'especes', payeePar: actor.uid, payeeAt: serverTimestamp(),
   });
   if (billetSessionId) {
     batch.update(doc(db, 'billets_session', billetSessionId), { statut: 'arrive' });
+  }
+  if (examenId) {
+    batch.update(doc(db, 'examens', examenId), { statut: 'en_cours' });
   }
   await batch.commit();
   await logAction({ actor, etablissementId, action: 'facture.encaisser_especes', targetType: 'facture', targetId: factureId });
@@ -45,13 +55,16 @@ export const encaisserEnEspeces = async (factureId, etablissementId, actor, bill
 // sans passer par CamPay in-app) : l'accueil constate le paiement via une
 // capture d'écran/reçu Mobile Money uploadée, cf. firestore.rules (factures
 // allow update, branche modePaiement=='mobile_money_preuve').
-export const encaisserAvecPreuve = async (factureId, preuveUrl, etablissementId, actor, billetSessionId) => {
+export const encaisserAvecPreuve = async (factureId, preuveUrl, etablissementId, actor, billetSessionId, examenId) => {
   const batch = writeBatch(db);
   batch.update(doc(db, 'factures', factureId), {
     statut: 'payee', modePaiement: 'mobile_money_preuve', preuveUrl, payeePar: actor.uid, payeeAt: serverTimestamp(),
   });
   if (billetSessionId) {
     batch.update(doc(db, 'billets_session', billetSessionId), { statut: 'arrive' });
+  }
+  if (examenId) {
+    batch.update(doc(db, 'examens', examenId), { statut: 'en_cours' });
   }
   await batch.commit();
   await logAction({ actor, etablissementId, action: 'facture.encaisser_preuve', targetType: 'facture', targetId: factureId });
