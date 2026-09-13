@@ -7,7 +7,9 @@ import { useAuth } from '../../context/AuthContext';
 import { buildPatientsQuery } from '../../services/patientsService';
 import { listenServices } from '../../services/litsService';
 import { listerMedecinsDuService } from '../../services/demandesRendezVousService';
-import { listenBilletsDuJour, creerBillet, saisirParametres, trouverBilletActifDuJour } from '../../services/billetsSessionService';
+import {
+  listenBilletsDuJour, creerBillet, saisirParametres, trouverBilletActifDuJour, listenPatientsAvecBilletActif,
+} from '../../services/billetsSessionService';
 import StatusBadge from '../../components/common/StatusBadge';
 import EmptyState from '../../components/common/EmptyState';
 import Loader from '../../components/common/Loader';
@@ -83,6 +85,9 @@ export default function BilletsSessionPage() {
   // existant, même créé un autre jour, est affiché ici et reste actionnable
   // (paiement/paramètres), au lieu d'un blocage sans recours.
   const [billetActifExistant, setBilletActifExistant] = useState(null);
+  const [patientsAvecBilletActif, setPatientsAvecBilletActif] = useState(new Set());
+
+  useEffect(() => listenPatientsAvecBilletActif(etablissementId, setPatientsAvecBilletActif), [etablissementId]);
 
   useEffect(() => {
     if (!patientSelectionne) { setBilletActifExistant(null); return; }
@@ -217,10 +222,18 @@ export default function BilletsSessionPage() {
                     key={p.id}
                     type="button"
                     onClick={() => { setPatientSelectionne(p); setRechercheNom(''); setRechercheNaissance(''); }}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-secondary/60"
+                    className="w-full flex items-center justify-between gap-2 text-left px-3 py-2 text-sm hover:bg-secondary/60"
                   >
-                    <span className="font-medium text-foreground">{p.prenom} {p.nom}</span>
-                    {p.dateNaissance && <span className="text-muted-foreground"> · né(e) le {new Date(`${p.dateNaissance}T00:00:00`).toLocaleDateString('fr-FR')}</span>}
+                    <span>
+                      <span className="font-medium text-foreground">{p.prenom} {p.nom}</span>
+                      {p.dateNaissance && <span className="text-muted-foreground"> · né(e) le {new Date(`${p.dateNaissance}T00:00:00`).toLocaleDateString('fr-FR')}</span>}
+                    </span>
+                    {patientsAvecBilletActif.has(p.id) && (
+                      <span
+                        className="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0"
+                        title="Billet de session encore valide"
+                      />
+                    )}
                   </button>
                 ))}
               </div>

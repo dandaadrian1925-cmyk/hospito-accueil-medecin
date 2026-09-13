@@ -154,6 +154,31 @@ export const trouverBilletValidePourDate = async (patientId, etablissementId, da
   return candidats[0] || null;
 };
 
+// #nouveau (demande utilisateur, "dans la liste des patients pour créer un
+// billet, un voyant vert loin à droite de la ligne pour dire que le billet
+// de session est encore valide") : la liste des patients (BilletsSessionPage)
+// peut afficher toute la patientèle de l'établissement sans recherche — un
+// getDoc par ligne visible serait coûteux. Un seul listener, même requête et
+// même fenêtre de validité que listenBilletsDuJour, réduit ensuite à un Set
+// de patientId côté client (aucun nouvel index).
+export const listenPatientsAvecBilletActif = (etablissementId, callback) => {
+  let unsubscribe = () => {};
+  let annule = false;
+  getSettings(etablissementId).then(({ dureeValiditeBilletJours }) => {
+    if (annule) return;
+    const seuil = new Date(Date.now() - dureeValiditeBilletJours * 24 * 3600 * 1000);
+    const q = query(
+      collection(db, 'billets_session'),
+      where('etablissementId', '==', etablissementId),
+      where('createdAt', '>=', Timestamp.fromDate(seuil)),
+    );
+    unsubscribe = onSnapshot(q, (snap) => callback(
+      new Set(snap.docs.map((d) => d.data()).filter((b) => b.statut !== 'consulte').map((b) => b.patientId)),
+    ));
+  });
+  return () => { annule = true; unsubscribe(); };
+};
+
 // `medecinId`/`medecinNom` optionnels (demande utilisateur, "file d'attente
 // liée à UN médecin précis") : absent = comportement historique, visible par
 // tout le service (cf. hospito-medecin, listenFileAttente).
