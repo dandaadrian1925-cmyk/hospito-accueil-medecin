@@ -154,14 +154,15 @@ export const trouverBilletValidePourDate = async (patientId, etablissementId, da
   return candidats[0] || null;
 };
 
-// #nouveau (demande utilisateur, "dans la liste des patients pour créer un
-// billet, un voyant vert loin à droite de la ligne pour dire que le billet
-// de session est encore valide") : la liste des patients (BilletsSessionPage)
-// peut afficher toute la patientèle de l'établissement sans recherche — un
-// getDoc par ligne visible serait coûteux. Un seul listener, même requête et
-// même fenêtre de validité que listenBilletsDuJour, réduit ensuite à un Set
-// de patientId côté client (aucun nouvel index).
-export const listenPatientsAvecBilletActif = (etablissementId, callback) => {
+// #évolué (demande utilisateur, "à la place de billets du jour, un tableau
+// avec les détails des validités des billets de consultation de tous les
+// patients") : ne renvoie plus un simple Set (juste "a un billet valide ?")
+// mais une Map patientId → billet actif le plus récent, enrichi de
+// `expireLe` (date de fin de validité) — de quoi construire directement les
+// colonnes du tableau (statut, service, créé le, valide jusqu'au) sans
+// requête supplémentaire. Toujours un seul listener, même requête que
+// listenBilletsDuJour, réduit côté client (aucun nouvel index).
+export const listenBilletsActifsParPatient = (etablissementId, callback) => {
   let unsubscribe = () => {};
   let annule = false;
   getSettings(etablissementId).then(({ dureeValiditeBilletJours }) => {
@@ -172,9 +173,19 @@ export const listenPatientsAvecBilletActif = (etablissementId, callback) => {
       where('etablissementId', '==', etablissementId),
       where('createdAt', '>=', Timestamp.fromDate(seuil)),
     );
-    unsubscribe = onSnapshot(q, (snap) => callback(
-      new Set(snap.docs.map((d) => d.data()).filter((b) => b.statut !== 'consulte').map((b) => b.patientId)),
-    ));
+    unsubscribe = onSnapshot(q, (snap) => {
+      const parPatient = new Map();
+      snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((b) => b.statut !== 'consulte')
+        .forEach((b) => {
+          const creeMs = b.createdAt?.toMillis?.() || 0;
+          const existant = parPatient.get(b.patientId);
+          if (existant && (existant.createdAt?.toMillis?.() || 0) >= creeMs) return;
+          parPatient.set(b.patientId, { ...b, expireLe: new Date(creeMs + dureeValiditeBilletJours * 24 * 3600 * 1000) });
+        });
+      callback(parPatient);
+    });
   });
   return () => { annule = true; unsubscribe(); };
 };

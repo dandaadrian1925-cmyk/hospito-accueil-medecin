@@ -8,11 +8,9 @@ import { buildPatientsQuery } from '../../services/patientsService';
 import { listenServices } from '../../services/litsService';
 import { listerMedecinsDuService } from '../../services/demandesRendezVousService';
 import {
-  listenBilletsDuJour, creerBillet, saisirParametres, trouverBilletActifDuJour, listenPatientsAvecBilletActif,
+  creerBillet, saisirParametres, trouverBilletActifDuJour, listenBilletsActifsParPatient,
 } from '../../services/billetsSessionService';
 import StatusBadge from '../../components/common/StatusBadge';
-import EmptyState from '../../components/common/EmptyState';
-import Loader from '../../components/common/Loader';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -67,10 +65,10 @@ export default function BilletsSessionPage() {
 
   const [patients, setPatients] = useState([]);
   const [tousLesServices, setTousLesServices] = useState([]);
-  const [billets, setBillets] = useState(null);
   const [patientSelectionne, setPatientSelectionne] = useState(null);
   const [rechercheNom, setRechercheNom] = useState('');
   const [rechercheNaissance, setRechercheNaissance] = useState('');
+  const [rechercheTable, setRechercheTable] = useState('');
   const [serviceId, setServiceId] = useState('');
   const [medecins, setMedecins] = useState([]);
   const [medecinId, setMedecinId] = useState('');
@@ -85,9 +83,9 @@ export default function BilletsSessionPage() {
   // existant, même créé un autre jour, est affiché ici et reste actionnable
   // (paiement/paramètres), au lieu d'un blocage sans recours.
   const [billetActifExistant, setBilletActifExistant] = useState(null);
-  const [patientsAvecBilletActif, setPatientsAvecBilletActif] = useState(new Set());
+  const [billetsActifsParPatient, setBilletsActifsParPatient] = useState(new Map());
 
-  useEffect(() => listenPatientsAvecBilletActif(etablissementId, setPatientsAvecBilletActif), [etablissementId]);
+  useEffect(() => listenBilletsActifsParPatient(etablissementId, setBilletsActifsParPatient), [etablissementId]);
 
   useEffect(() => {
     if (!patientSelectionne) { setBilletActifExistant(null); return; }
@@ -112,7 +110,6 @@ export default function BilletsSessionPage() {
   useEffect(() => {
     if (services.length === 1 && serviceId !== services[0].id) setServiceId(services[0].id);
   }, [services]);
-  useEffect(() => listenBilletsDuJour(etablissementId, setBillets), [etablissementId]);
 
   // #nouveau (demande utilisateur, "la liste des patients mais avec la barre
   // de recherche pour filtrer") : liste complète visible, filtrée en direct
@@ -125,6 +122,18 @@ export default function BilletsSessionPage() {
       .filter((p) => !rechercheNaissance || p.dateNaissance === rechercheNaissance)
       .sort((a, b) => `${a.prenom}${a.nom}`.localeCompare(`${b.prenom}${b.nom}`));
   }, [patients, rechercheNom, rechercheNaissance]);
+
+  // #nouveau (demande utilisateur, "à la place de billets du jour, un
+  // tableau avec les détails des validités des billets de consultation de
+  // tous les patients, avec une barre de recherche sur patient") : recherche
+  // indépendante de celle du sélecteur ci-dessus (deux usages différents —
+  // créer un billet vs. consulter les validités).
+  const patientsTable = useMemo(() => {
+    const nomCherche = normaliser(rechercheTable);
+    return patients
+      .filter((p) => !nomCherche || normaliser(`${p.prenom} ${p.nom}`).includes(nomCherche))
+      .sort((a, b) => `${a.prenom}${a.nom}`.localeCompare(`${b.prenom}${b.nom}`));
+  }, [patients, rechercheTable]);
 
   // #nouveau (demande utilisateur, "billet lié à UN médecin précis") :
   // proposé UNE FOIS le service choisi, jamais obligatoire (un billet sans
@@ -228,7 +237,7 @@ export default function BilletsSessionPage() {
                       <span className="font-medium text-foreground">{p.prenom} {p.nom}</span>
                       {p.dateNaissance && <span className="text-muted-foreground"> · né(e) le {new Date(`${p.dateNaissance}T00:00:00`).toLocaleDateString('fr-FR')}</span>}
                     </span>
-                    {patientsAvecBilletActif.has(p.id) && (
+                    {billetsActifsParPatient.has(p.id) && (
                       <span
                         className="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0"
                         title="Billet de session encore valide"
@@ -277,14 +286,65 @@ export default function BilletsSessionPage() {
       </div>
 
       <div className="space-y-3">
-        <h2 className="font-display text-lg font-semibold text-foreground">Billets du jour</h2>
-        {billets === null ? <Loader label="Chargement…" /> : !billets.length ? (
-          <EmptyState title="Aucun billet aujourd'hui" description="Les patients accueillis aujourd'hui apparaîtront ici." />
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {billets.map((b) => <BilletCard key={b.id} b={b} onSaisirParametres={ouvrirParametres} />)}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="font-display text-lg font-semibold text-foreground">Validité des billets de consultation</h2>
+          <div className="relative w-full sm:w-72">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input className="pl-8" placeholder="Rechercher un patient…" value={rechercheTable} onChange={(e) => setRechercheTable(e.target.value)} />
           </div>
-        )}
+        </div>
+        <div className="glass-card-elevated overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-muted-foreground">
+                <th className="px-3 py-2 font-medium">Patient</th>
+                <th className="px-3 py-2 font-medium">Validité</th>
+                <th className="px-3 py-2 font-medium">Service</th>
+                <th className="px-3 py-2 font-medium">Statut du billet</th>
+                <th className="px-3 py-2 font-medium">Créé le</th>
+                <th className="px-3 py-2 font-medium">Valide jusqu'au</th>
+              </tr>
+            </thead>
+            <tbody>
+              {!patientsTable.length ? (
+                <tr><td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">Aucun patient ne correspond.</td></tr>
+              ) : patientsTable.map((p) => {
+                const billet = billetsActifsParPatient.get(p.id);
+                return (
+                  <tr key={p.id} className="border-b border-border/50 last:border-0">
+                    <td className="px-3 py-2">
+                      <span className="font-medium text-foreground">{p.prenom} {p.nom}</span>
+                      {p.dateNaissance && (
+                        <span className="text-muted-foreground text-xs block">
+                          né(e) le {new Date(`${p.dateNaissance}T00:00:00`).toLocaleDateString('fr-FR')}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {billet ? (
+                        <span className="inline-flex items-center gap-1.5 text-emerald-600 font-medium">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" /> Valide
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Aucun billet valide</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">{billet?.serviceNom || '—'}</td>
+                    <td className="px-3 py-2">
+                      {billet ? <StatusBadge label={LABEL_STATUT[billet.statut]} tone={TONE_STATUT[billet.statut]} /> : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {billet?.createdAt?.toDate?.() ? billet.createdAt.toDate().toLocaleDateString('fr-FR') : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {billet?.expireLe ? billet.expireLe.toLocaleDateString('fr-FR') : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {billetOuvert && (
