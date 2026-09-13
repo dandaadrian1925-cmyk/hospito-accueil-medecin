@@ -82,6 +82,22 @@ function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
   })();
   const planningRenseigne = !!medecinsDeGarde?.size;
 
+  // #corrigé (retour utilisateur, "j'ai confirmé un RDV pour aujourd'hui mais
+  // rien n'apparaît dans la file d'attente") : le défaut "09:00" pour une
+  // date du jour peut déjà être passé au moment où l'accueil ouvre le
+  // dialogue — confirmerDemande refuse alors SILENCIEUSEMENT (DATE_PASSEE,
+  // "jamais un RDV confirmé pour une heure déjà révolue"), sans que l'accueil
+  // n'ait touché à rien ni forcément remarqué le message d'erreur. Si 9h est
+  // déjà dépassé aujourd'hui, on part de "maintenant + 15 min" au lieu de 9h.
+  const pad = (n) => String(n).padStart(2, '0');
+  const versDateHeureInput = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const defautDateHeure = (dateSouhaitee) => {
+    if (!dateSouhaitee) return '';
+    const neufHeures = new Date(`${dateSouhaitee}T09:00`);
+    if (neufHeures.getTime() > Date.now()) return `${dateSouhaitee}T09:00`;
+    return versDateHeureInput(new Date(Date.now() + 15 * 60000));
+  };
+
   const ouvrirConfirmation = (d) => {
     setDemandeEnCours(d);
     // Préremplit avec la préférence du patient (choisie parmi les
@@ -89,7 +105,7 @@ function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
     // affectation : l'accueil reste libre de changer avant de confirmer.
     setForm({
       medecinId: d.medecinPrefereId || '',
-      dateHeure: d.dateSouhaitee ? `${d.dateSouhaitee}T09:00` : '',
+      dateHeure: defautDateHeure(d.dateSouhaitee),
     });
   };
 
@@ -99,7 +115,7 @@ function DemandesEnLigneSection({ etablissementId, actor, monServiceId }) {
   // si l'accueil n'a pas déjà modifié l'heure entre-temps.
   useEffect(() => {
     if (!demandeEnCours?.medecinPrefereId || !demandeEnCours?.dateSouhaitee) return;
-    const defaut = `${demandeEnCours.dateSouhaitee}T09:00`;
+    const defaut = defautDateHeure(demandeEnCours.dateSouhaitee);
     if (form.dateHeure !== defaut) return;
     const prefere = medecins.find((m) => m.uid === demandeEnCours.medecinPrefereId);
     const jour = JOURS_SEMAINE[new Date(`${demandeEnCours.dateSouhaitee}T00:00`).getDay()];
