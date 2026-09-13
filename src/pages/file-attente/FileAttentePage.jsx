@@ -150,26 +150,39 @@ export default function FileAttentePage() {
       ) : !rendezVousConfirmes.length ? (
         <EmptyState title="Aucun rendez-vous" description="Les rendez-vous confirmés (au guichet ou depuis une demande en ligne) apparaîtront ici, triés par heure, pour la période choisie." />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {rendezVousConfirmes.map((r) => (
-            <div key={r.id} className="glass-card-elevated p-4 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-foreground">{r.patientNom}</span>
-                <div className="flex gap-1.5 flex-shrink-0">
-                  <StatusBadge label={LABEL_ORIGINE[r.origine]} tone={TONE_ORIGINE[r.origine]} />
-                  <StatusBadge label={r.statutLabel} tone={r.statutTone} />
-                </div>
-              </div>
-              {r.heure && (
-                <span className="flex items-center gap-1 text-xs font-medium text-primary">
-                  <Clock size={12} /> {r.heure.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {r.heure.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              )}
-              {r.service && <p className="text-sm text-muted-foreground">{r.service}</p>}
-              {r.medecinNom && <p className="text-sm text-muted-foreground">Dr {r.medecinNom}</p>}
-              {r.motif && <p className="text-xs text-muted-foreground italic">{r.motif}</p>}
-            </div>
-          ))}
+        <div className="glass-card-elevated overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-muted-foreground">
+                <th className="px-3 py-2 font-medium">Heure</th>
+                <th className="px-3 py-2 font-medium">Patient</th>
+                <th className="px-3 py-2 font-medium">Service</th>
+                <th className="px-3 py-2 font-medium">Médecin</th>
+                <th className="px-3 py-2 font-medium">Motif</th>
+                <th className="px-3 py-2 font-medium">Origine</th>
+                <th className="px-3 py-2 font-medium">Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rendezVousConfirmes.map((r) => (
+                <tr key={r.id} className="border-b border-border/50 last:border-0">
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {r.heure ? (
+                      <span className="flex items-center gap-1 font-medium text-primary">
+                        <Clock size={12} /> {r.heure.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {r.heure.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  <td className="px-3 py-2 font-medium text-foreground">{r.patientNom}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{r.service || '—'}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{r.medecinNom ? `Dr ${r.medecinNom}` : '—'}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{r.motif || '—'}</td>
+                  <td className="px-3 py-2"><StatusBadge label={LABEL_ORIGINE[r.origine]} tone={TONE_ORIGINE[r.origine]} /></td>
+                  <td className="px-3 py-2"><StatusBadge label={r.statutLabel} tone={r.statutTone} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
