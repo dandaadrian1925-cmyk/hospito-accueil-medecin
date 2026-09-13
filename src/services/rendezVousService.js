@@ -3,6 +3,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { logAction } from './auditService';
+import { trouverBilletValidePourDate } from './billetsSessionService';
 
 // Rendez-vous et consultations (§4.4) — scopés par établissement.
 // 'absent' : basculé automatiquement par la tâche planifiée serveur
@@ -20,6 +21,31 @@ export const creerRendezVous = async ({ patientId, patientNom, serviceId, servic
     dateHeure: Timestamp.fromDate(new Date(dateHeure)), motif: motif?.trim() || null,
     statut: 'planifie', createdAt: serverTimestamp(), createdBy: actor?.uid || null,
   });
+
+  // #corrigé (retour utilisateur, "j'ai pris un rendez-vous aujourd'hui pour
+  // ce patient mais il n'apparaît pas dans la file d'attente") : `rendez_vous`
+  // (pris au guichet, ci-dessus) et `billets_session` (seule collection lue
+  // par la File d'attente) étaient jusqu'ici totalement déconnectés — un RDV
+  // guichet ne touchait jamais le billet du patient, même quand il en avait
+  // déjà un valide. Même logique que confirmerDemande
+  // (demandesRendezVousService.js) pour les demandes en ligne : si un billet
+  // valide existe pour ce patient à cette date, on l'aligne sur ce RDV pour
+  // qu'il entre dans la file — sinon le RDV reste créé tel quel (certains
+  // services ne facturent pas de billet, ce n'est pas bloquant ici).
+  try {
+    const billet = await trouverBilletValidePourDate(patientId, etablissementId, dateHeure);
+    if (billet) {
+      const dejaPayeOuVu = billet.statut !== 'a_payer';
+      await updateDoc(doc(db, 'billets_session', billet.id), {
+        dateHeure: Timestamp.fromDate(new Date(dateHeure)),
+        ...(dejaPayeOuVu ? { statut: 'pret', parametres: null, parametresAt: null, consultePar: null, consulteAt: null } : {}),
+      });
+    }
+  } catch {
+    // Le RDV lui-même est déjà créé — l'échec de ce rattachement optionnel
+    // ne doit pas faire croire à l'accueil que le RDV n'a pas été pris.
+  }
+
   await logAction({ actor, etablissementId, action: 'rendezvous.creer', targetType: 'rendez_vous', targetId: ref.id, details: { patientId } });
   return ref.id;
 };
