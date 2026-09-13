@@ -141,18 +141,17 @@ export default function FileAttentePage() {
     return { billetsParDemandeId: parDemande, billetParPatientLePlusRecent: parPatient };
   }, [billetsService]);
 
-  // #corrigé (retour utilisateur, "5 lignes 'prêt' chez l'accueil pour un
-  // seul patient, mais rien chez le médecin") : confirmerDemande réutilise
-  // TOUJOURS le même billet pour un même patient — confirmer plusieurs
-  // demandes de suite ne crée pas 5 tickets, ça réassigne le MÊME 5 fois de
-  // suite (médecin/heure écrasés à chaque fois). Les colonnes Heure/Médecin
-  // affichaient jusqu'ici l'instantané figé de CHAQUE demande au moment de
-  // sa confirmation — plus forcément la réalité du billet, qui a bougé
-  // depuis. Elles reflètent désormais le billet LUI-MÊME (source de vérité
-  // pour hospito-medecin) quand il est résolu, et les lignes qui partagent
-  // le même billet sont fusionnées en une seule (nbDemandes compte les
-  // demandes redondantes plutôt que de les afficher comme des patients
-  // distincts).
+  // #corrigé (retour utilisateur, "Adrian Geraud avait demandé Dr Test
+  // Médecin mais apparaît chez Medecin2" — la tentative précédente de
+  // "corriger" l'affichage en préférant le billet réassignable ET en
+  // fusionnant les lignes qui le partagent était l'erreur : DEUX rendez-vous
+  // confirmés pour DEUX médecins différents peuvent légitimement partager le
+  // même billet (simple preuve de passage/paiement) sans être le MÊME
+  // rendez-vous — les fusionner en masquait un. Chaque rendez-vous garde
+  // désormais SES PROPRES médecin/heure (jamais réécrits par la confirmation
+  // d'un autre) ; seul l'État (paramètres déjà saisis ou non) vient du
+  // billet résolu, qui n'a jamais prétendu représenter qu'UN SEUL
+  // rendez-vous à la fois.
   const rendezVousConfirmes = useMemo(() => {
     if (!monServiceId || rendezVous === null || demandesConfirmees === null || billetsService === null) return null;
     const duGuichet = rendezVous
@@ -165,10 +164,10 @@ export default function FileAttentePage() {
           billetId: billet?.id || null,
           patientId: r.patientId,
           patientNom: r.patientNom,
-          heure: billet?.dateHeure?.toDate?.() || r.dateHeure?.toDate?.() || null,
+          heure: r.dateHeure?.toDate?.() || null,
           service: r.service,
-          medecinId: billet?.medecinId ?? null,
-          medecinNom: billet?.medecinNom ?? null,
+          medecinId: null,
+          medecinNom: null,
           motif: r.motif,
           statutLabel: LABEL_STATUT_GUICHET[r.statut],
           statutTone: TONE_STATUT_GUICHET[r.statut],
@@ -187,10 +186,10 @@ export default function FileAttentePage() {
           billetId: billet?.id || null,
           patientId,
           patientNom: d.patientNom,
-          heure: billet?.dateHeure?.toDate?.() || d.dateHeure?.toDate?.() || null,
+          heure: d.dateHeure?.toDate?.() || null,
           service: d.serviceNom,
-          medecinId: billet?.medecinId ?? d.medecinId ?? null,
-          medecinNom: billet?.medecinNom ?? d.medecinNom ?? null,
+          medecinId: d.medecinId || null,
+          medecinNom: d.medecinNom,
           motif: d.motif,
           statutLabel: 'Confirmé',
           statutTone: 'green',
@@ -199,15 +198,7 @@ export default function FileAttentePage() {
         };
       });
 
-    const parCle = new Map();
-    [...duGuichet, ...enLigne].forEach((r) => {
-      const cle = r.billetId ? `billet_${r.billetId}` : `ligne_${r.id}`;
-      const existant = parCle.get(cle);
-      if (existant) existant.nbDemandes += 1;
-      else parCle.set(cle, { ...r, nbDemandes: 1 });
-    });
-
-    return [...parCle.values()]
+    return [...duGuichet, ...enLigne]
       .filter((r) => r.heure && r.heure >= dateDebut && r.heure <= dateFin)
       .filter((r) => etatFiltre === 'tous' || r.billetStatut === etatFiltre)
       .sort((a, b) => a.heure - b.heure);
@@ -349,14 +340,7 @@ export default function FileAttentePage() {
                       </span>
                     ) : '—'}
                   </td>
-                  <td className="px-3 py-2 font-medium text-foreground">
-                    {r.patientNom}
-                    {r.nbDemandes > 1 && (
-                      <span className="ml-1.5 text-xs font-normal text-muted-foreground" title="Plusieurs demandes confirmées pour ce même rendez-vous — un seul billet, réutilisé à chaque confirmation.">
-                        (×{r.nbDemandes})
-                      </span>
-                    )}
-                  </td>
+                  <td className="px-3 py-2 font-medium text-foreground">{r.patientNom}</td>
                   <td className="px-3 py-2 text-muted-foreground">{r.service || '—'}</td>
                   <td className="px-3 py-2 text-muted-foreground">{r.medecinNom ? `Dr ${r.medecinNom}` : '—'}</td>
                   <td className="px-3 py-2 text-muted-foreground">{r.motif || '—'}</td>
