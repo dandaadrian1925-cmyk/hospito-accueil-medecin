@@ -1,9 +1,21 @@
 import {
-  collection, doc, addDoc, updateDoc, query, where, orderBy, onSnapshot, Timestamp, serverTimestamp,
+  collection, doc, getDoc, addDoc, updateDoc, query, where, orderBy, onSnapshot, Timestamp, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { logAction } from './auditService';
 import { trouverBilletValidePourDate } from './billetsSessionService';
+import { creerNotification } from './notificationsService';
+
+// #nouveau (demande utilisateur, "toutes les notifications soient
+// fonctionnelles pour toutes les opérations") : `rendez_vous` ne porte pas
+// patientUid — résolu depuis la fiche, même principe que
+// admissionsService.js::notifierPatientAdmission. Best-effort.
+const notifierPatientRdv = async (patientId, { titre, message }) => {
+  try {
+    const patientUid = (await getDoc(doc(db, 'patients', patientId))).data()?.patientUid;
+    if (patientUid) await creerNotification({ userId: patientUid, type: 'rendezvous', titre, message, link: '/mon-compte/rendez-vous' });
+  } catch { /* best-effort */ }
+};
 
 // Rendez-vous et consultations (§4.4) — scopés par établissement.
 // 'absent' : basculé automatiquement par la tâche planifiée serveur
@@ -59,11 +71,20 @@ export const creerRendezVous = async ({ patientId, patientNom, serviceId, servic
   }
 
   await logAction({ actor, etablissementId, action: 'rendezvous.creer', targetType: 'rendez_vous', targetId: ref.id, details: { patientId } });
+  notifierPatientRdv(patientId, {
+    titre: 'Rendez-vous pris',
+    message: `Un rendez-vous a été pris pour vous le ${new Date(dateHeure).toLocaleString('fr-FR')}.`,
+  });
   return ref.id;
 };
 
 export const changerStatutRendezVous = async (rdvId, statut, etablissementId, actor) => {
   if (!STATUTS_RDV.includes(statut)) throw new Error('STATUT_INVALIDE');
+  const patientId = (await getDoc(doc(db, 'rendez_vous', rdvId))).data()?.patientId;
   await updateDoc(doc(db, 'rendez_vous', rdvId), { statut });
   await logAction({ actor, etablissementId, action: 'rendezvous.changer_statut', targetType: 'rendez_vous', targetId: rdvId, details: { statut } });
+  const LABEL_STATUT = { annule: 'Rendez-vous annulé', confirme: 'Rendez-vous confirmé', termine: 'Rendez-vous terminé', absent: 'Rendez-vous marqué absent' };
+  if (patientId && LABEL_STATUT[statut]) {
+    notifierPatientRdv(patientId, { titre: LABEL_STATUT[statut], message: LABEL_STATUT[statut] + '.' });
+  }
 };
