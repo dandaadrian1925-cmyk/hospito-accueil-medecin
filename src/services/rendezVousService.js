@@ -1,5 +1,5 @@
 import {
-  collection, doc, addDoc, updateDoc, query, where, orderBy, Timestamp, serverTimestamp,
+  collection, doc, addDoc, updateDoc, query, where, orderBy, onSnapshot, Timestamp, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { logAction } from './auditService';
@@ -14,6 +14,18 @@ export const STATUTS_RDV = ['planifie', 'confirme', 'annule', 'termine', 'absent
 
 export const buildRendezVousQuery = (etablissementId) =>
   query(collection(db, 'rendez_vous'), where('etablissementId', '==', etablissementId), orderBy('dateHeure', 'asc'));
+
+// #nouveau (demande utilisateur, "reconstruit entièrement la File d'attente :
+// elle doit contenir les patients ayant un rendez-vous confirmé par
+// l'accueil") : écoute live (pas paginée, contrairement à buildRendezVousQuery
+// + useFirestorePagination ci-dessus, pensé pour le tableau "Rendez-vous")
+// de tous les RDV pris au guichet de l'établissement — FileAttentePage.jsx
+// filtre ensuite par service et par période, comme pour les demandes en
+// ligne confirmées (cf. demandesRendezVousService::listenDemandesConfirmees).
+export const listenRendezVous = (etablissementId, callback) => {
+  const q = query(collection(db, 'rendez_vous'), where('etablissementId', '==', etablissementId), orderBy('dateHeure', 'asc'));
+  return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+};
 
 export const creerRendezVous = async ({ patientId, patientNom, serviceId, service, dateHeure, motif }, etablissementId, actor) => {
   const ref = await addDoc(collection(db, 'rendez_vous'), {

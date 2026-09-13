@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Ticket, Clock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { listenFileAttente, listenTousBilletsPeriode } from '../../services/billetsSessionService';
+import { listenRendezVous } from '../../services/rendezVousService';
+import { listenDemandesConfirmees } from '../../services/demandesRendezVousService';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -9,17 +10,9 @@ import EmptyState from '../../components/common/EmptyState';
 import Loader from '../../components/common/Loader';
 import StatusBadge from '../../components/common/StatusBadge';
 
-const LABEL_STATUT = { a_payer: 'À payer', arrive: 'En attente des paramètres', pret: 'Prêt pour consultation', consulte: 'Consulté' };
-const TONE_STATUT = { a_payer: 'amber', arrive: 'blue', pret: 'green', consulte: 'gray' };
-
 const debutJour = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 const finJour = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; };
 
-// #nouveau (demande utilisateur, "quand on confirme un rendez-vous ça doit
-// apparaître dans la file d'attente en ordre des rendez-vous, avec des
-// filtres aujourd'hui/demain/cette semaine/ce mois/personnalisé") : semaine
-// au sens ISO (lundi → dimanche), cohérent avec le reste du projet
-// francophone.
 const PERIODES = {
   aujourdhui: () => { const j = new Date(); return [debutJour(j), finJour(j)]; },
   demain: () => { const j = new Date(); j.setDate(j.getDate() + 1); return [debutJour(j), finJour(j)]; },
@@ -38,19 +31,30 @@ const PERIODES = {
 const LABEL_PERIODE = { aujourdhui: "Aujourd'hui", demain: 'Demain', semaine: 'Cette semaine', mois: 'Ce mois', personnalise: 'Personnalisé' };
 const versInput = (d) => d.toISOString().slice(0, 10);
 
-// #nouveau (demande utilisateur, "je voudrais que la sidebar de l'accueil
-// médecin ait aussi file d'attente donc lorsqu'un rendez-vous est confirmé,
-// il entre directement dans la file d'attente du médecin en question") :
-// vue d'ensemble, pour l'accueil de son service, des patients "prêts" pour
-// consultation — qu'ils soient arrivés par un billet physique ou par un RDV
-// en ligne confirmé (cf. confirmerDemande, demandesRendezVousService.js,
-// qui rattache désormais le billet au médecin + à l'heure du RDV). Triée
-// par heure effective (RDV si connu, sinon heure d'arrivée), jamais par
-// heure de création du billet seule.
+// Guichet (rendez_vous, statut) — 'annule'/'termine'/'absent' ne sont plus
+// des rendez-vous À VENIR, ils sortent de la file.
+const LABEL_STATUT_GUICHET = { planifie: 'Planifié', confirme: 'Confirmé' };
+const TONE_STATUT_GUICHET = { planifie: 'amber', confirme: 'green' };
+const LABEL_ORIGINE = { guichet: 'Guichet', en_ligne: 'RDV en ligne', teleconsultation: 'Téléconsultation' };
+const TONE_ORIGINE = { guichet: 'gray', en_ligne: 'blue', teleconsultation: 'blue' };
+
+// #reconstruit (demande utilisateur, "la File d'attente doit contenir les
+// patients ayant un rendez-vous confirmé par l'accueil, avec toutes les
+// informations, en gardant les filtres de date actuels") : abandonne
+// entièrement l'ancienne approche basée sur billets_session/statut 'pret'
+// (source de confusion répétée — un billet payé/vu n'est pas un rendez-vous,
+// et inversement) au profit d'une vraie liste de RENDEZ-VOUS : ceux pris au
+// guichet ("Rendez-vous > Nouveau rendez-vous", collection rendez_vous,
+// statut planifié ou confirmé) ET les demandes en ligne que l'accueil a
+// explicitement confirmées ("Demandes en ligne > Confirmer",
+// demandes_rendez_vous statut 'confirme'). Les mêmes filtres de période
+// (aujourd'hui/demain/cette semaine/ce mois/personnalisé) restent
+// fonctionnels, appliqués côté client sur l'heure du rendez-vous — même
+// principe qu'avant, aucun nouvel index Firestore requis.
 export default function FileAttentePage() {
   const { userProfile, etablissementId } = useAuth();
-  const [billets, setBillets] = useState(null);
-  const [tousBillets, setTousBillets] = useState(null);
+  const [rendezVous, setRendezVous] = useState(null);
+  const [demandesConfirmees, setDemandesConfirmees] = useState(null);
   const [periode, setPeriode] = useState('aujourdhui');
   const [personnaliseDebut, setPersonnaliseDebut] = useState(versInput(new Date()));
   const [personnaliseFin, setPersonnaliseFin] = useState(versInput(new Date()));
@@ -61,15 +65,43 @@ export default function FileAttentePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periode, personnaliseDebut, personnaliseFin]);
 
-  useEffect(() => {
-    if (!userProfile?.serviceId) return;
-    return listenFileAttente(etablissementId, userProfile.serviceId, dateDebut, dateFin, setBillets);
-  }, [etablissementId, userProfile?.serviceId, dateDebut, dateFin]);
+  useEffect(() => listenRendezVous(etablissementId, setRendezVous), [etablissementId]);
+  useEffect(() => listenDemandesConfirmees(etablissementId, setDemandesConfirmees), [etablissementId]);
 
-  useEffect(() => {
-    if (!userProfile?.serviceId) return;
-    return listenTousBilletsPeriode(etablissementId, userProfile.serviceId, dateDebut, dateFin, setTousBillets);
-  }, [etablissementId, userProfile?.serviceId, dateDebut, dateFin]);
+  const monServiceId = userProfile?.serviceId;
+
+  const rendezVousConfirmes = useMemo(() => {
+    if (!monServiceId || rendezVous === null || demandesConfirmees === null) return null;
+    const duGuichet = rendezVous
+      .filter((r) => r.serviceId === monServiceId && (r.statut === 'planifie' || r.statut === 'confirme'))
+      .map((r) => ({
+        id: `rdv_${r.id}`,
+        patientNom: r.patientNom,
+        heure: r.dateHeure?.toDate?.() || null,
+        service: r.service,
+        medecinNom: null,
+        motif: r.motif,
+        statutLabel: LABEL_STATUT_GUICHET[r.statut],
+        statutTone: TONE_STATUT_GUICHET[r.statut],
+        origine: 'guichet',
+      }));
+    const enLigne = demandesConfirmees
+      .filter((d) => d.serviceId === monServiceId)
+      .map((d) => ({
+        id: `demande_${d.id}`,
+        patientNom: d.patientNom,
+        heure: d.dateHeure?.toDate?.() || null,
+        service: d.serviceNom,
+        medecinNom: d.medecinNom,
+        motif: d.motif,
+        statutLabel: 'Confirmé',
+        statutTone: 'green',
+        origine: d.type === 'teleconsultation' ? 'teleconsultation' : 'en_ligne',
+      }));
+    return [...duGuichet, ...enLigne]
+      .filter((r) => r.heure && r.heure >= dateDebut && r.heure <= dateFin)
+      .sort((a, b) => a.heure - b.heure);
+  }, [rendezVous, demandesConfirmees, monServiceId, dateDebut, dateFin]);
 
   if (!userProfile?.serviceId) {
     return (
@@ -87,7 +119,7 @@ export default function FileAttentePage() {
           <Ticket size={22} className="text-primary" /> File d'attente
         </h1>
         <p className="text-muted-foreground mt-1">
-          Patients prêts pour consultation pour {userProfile.service || 'votre service'}, dans l'ordre de leurs rendez-vous.
+          Patients ayant un rendez-vous confirmé pour {userProfile.service || 'votre service'}, dans l'ordre de leurs rendez-vous.
         </p>
       </div>
 
@@ -113,64 +145,33 @@ export default function FileAttentePage() {
         )}
       </div>
 
-      {billets === null ? (
+      {rendezVousConfirmes === null ? (
         <Loader label="Chargement de la file d'attente…" />
-      ) : !billets.length ? (
-        <EmptyState title="Aucun patient en attente" description="Les billets prêts (arrivée physique ou RDV en ligne confirmé) apparaîtront ici, triés par heure, pour la période choisie." />
+      ) : !rendezVousConfirmes.length ? (
+        <EmptyState title="Aucun rendez-vous" description="Les rendez-vous confirmés (au guichet ou depuis une demande en ligne) apparaîtront ici, triés par heure, pour la période choisie." />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {billets.map((b) => {
-            const heure = (b.dateHeure?.toDate?.() || b.createdAt?.toDate?.());
-            return (
-              <div key={b.id} className="glass-card-elevated p-4 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-foreground">{b.patientNom}</span>
-                  {heure && (
-                    <span className="flex items-center gap-1 text-xs font-medium text-primary flex-shrink-0">
-                      <Clock size={12} /> {heure.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {heure.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  )}
+          {rendezVousConfirmes.map((r) => (
+            <div key={r.id} className="glass-card-elevated p-4 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-foreground">{r.patientNom}</span>
+                <div className="flex gap-1.5 flex-shrink-0">
+                  <StatusBadge label={LABEL_ORIGINE[r.origine]} tone={TONE_ORIGINE[r.origine]} />
+                  <StatusBadge label={r.statutLabel} tone={r.statutTone} />
                 </div>
-                <p className="text-sm text-muted-foreground">{b.medecinNom ? `Dr ${b.medecinNom}` : 'Aucun médecin assigné'}</p>
               </div>
-            );
-          })}
+              {r.heure && (
+                <span className="flex items-center gap-1 text-xs font-medium text-primary">
+                  <Clock size={12} /> {r.heure.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {r.heure.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+              {r.service && <p className="text-sm text-muted-foreground">{r.service}</p>}
+              {r.medecinNom && <p className="text-sm text-muted-foreground">Dr {r.medecinNom}</p>}
+              {r.motif && <p className="text-xs text-muted-foreground italic">{r.motif}</p>}
+            </div>
+          ))}
         </div>
       )}
-
-      <div className="space-y-3">
-        <div>
-          <h2 className="font-display text-lg font-semibold text-foreground">Tous les rendez-vous — {LABEL_PERIODE[periode]}</h2>
-          <p className="text-sm text-muted-foreground">
-            Tous les billets de ce service pour la période choisie, quel que soit leur statut — y compris ceux pas encore prêts pour la file d'attente.
-          </p>
-        </div>
-        {tousBillets === null ? (
-          <Loader label="Chargement…" />
-        ) : !tousBillets.length ? (
-          <EmptyState title="Aucun rendez-vous" description="Aucun billet enregistré pour ce service sur la période choisie." />
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {tousBillets.map((b) => {
-              const heure = (b.dateHeure?.toDate?.() || b.createdAt?.toDate?.());
-              return (
-                <div key={b.id} className="glass-card-elevated p-4 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-foreground">{b.patientNom}</span>
-                    <StatusBadge label={LABEL_STATUT[b.statut]} tone={TONE_STATUT[b.statut]} />
-                  </div>
-                  {heure && (
-                    <span className="flex items-center gap-1 text-xs font-medium text-primary">
-                      <Clock size={12} /> {heure.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {heure.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  )}
-                  <p className="text-sm text-muted-foreground">{b.medecinNom ? `Dr ${b.medecinNom}` : 'Aucun médecin assigné'}</p>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

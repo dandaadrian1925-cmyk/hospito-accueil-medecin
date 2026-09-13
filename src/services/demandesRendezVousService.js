@@ -22,6 +22,22 @@ export const listenDemandesEnAttente = (etablissementId, callback) => {
   return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
 };
 
+// #nouveau (demande utilisateur, "reconstruit entièrement la File
+// d'attente : elle doit contenir les patients ayant un rendez-vous confirmé
+// par l'accueil") : même requête que listenDemandesEnAttente, statut
+// 'confirme' au lieu de 'en_attente' — même index déjà en place (mêmes
+// champs, valeur différente). FileAttentePage.jsx les combine avec les RDV
+// pris au guichet (rendezVousService::listenRendezVous).
+export const listenDemandesConfirmees = (etablissementId, callback) => {
+  const q = query(
+    collection(db, 'demandes_rendez_vous'),
+    where('etablissementId', '==', etablissementId),
+    where('statut', '==', 'confirme'),
+    orderBy('createdAt', 'desc'),
+  );
+  return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+};
+
 // #nouveau (demande utilisateur, "la confirmation n'est possible que s'il a
 // un billet de consultation valide au jour du rendez-vous") : le patient
 // doit déjà être passé une fois à l'accueil de CET établissement (fiche +

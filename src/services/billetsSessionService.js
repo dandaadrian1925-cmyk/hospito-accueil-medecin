@@ -65,58 +65,15 @@ export const listenBilletsDuJour = (etablissementId, callback) => {
   return () => { annule = true; unsubscribe(); };
 };
 
-// #évolué (demande utilisateur, "quand on confirme un rendez-vous ça doit
-// apparaître dans la file d'attente en ordre des rendez-vous, avec des
-// filtres de date aujourd'hui/demain/cette semaine/ce mois/personnalisé") :
-// filtrait auparavant EXCLUSIVEMENT sur "aujourd'hui" (estAujourdhui),
-// aucune autre période consultable. Prend désormais une vraie plage
-// [dateDebut, dateFin] (bornes incluses) — l'appelant (FileAttentePage)
-// construit cette plage selon le filtre choisi ; "Aujourd'hui" reste le
-// comportement par défaut. Toujours filtré/trié CLIENT sur l'heure
-// effective, même requête serveur qu'avant (aucun nouvel index requis).
-export const listenFileAttente = (etablissementId, serviceId, dateDebut, dateFin, callback) => {
-  const q = query(
-    collection(db, 'billets_session'),
-    where('etablissementId', '==', etablissementId),
-    where('statut', '==', 'pret'),
-    where('serviceId', '==', serviceId),
-  );
-  return onSnapshot(q, (snap) => callback(
-    snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((b) => {
-        const h = heureEffective(b);
-        return h && h >= dateDebut && h <= dateFin;
-      })
-      .sort((a, b) => heureEffective(a) - heureEffective(b)),
-  ));
-};
-
-// #nouveau (demande utilisateur, "je voudrais voir affiché tous les
-// rendez-vous pris pour cette date d'aujourd'hui, forcément c'est
-// enregistré dans firestore") : la File d'attente ne montre QUE les billets
-// 'pret' — un billet 'a_payer' (pas encore payé) ou 'arrive' (paramètres pas
-// encore pris) pour un RDV du jour n'y apparaît jamais, ce qui peut donner
-// l'impression trompeuse qu'un RDV confirmé "n'a servi à rien". Même
-// requête que listenFileAttente, MAIS sans le filtre `statut` — montre tous
-// les billets du service pour la période choisie, quel que soit leur statut
-// actuel, pour que l'accueil voie la vérité telle qu'enregistrée.
-export const listenTousBilletsPeriode = (etablissementId, serviceId, dateDebut, dateFin, callback) => {
-  const q = query(
-    collection(db, 'billets_session'),
-    where('etablissementId', '==', etablissementId),
-    where('serviceId', '==', serviceId),
-  );
-  return onSnapshot(q, (snap) => callback(
-    snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((b) => {
-        const h = heureEffective(b);
-        return h && h >= dateDebut && h <= dateFin;
-      })
-      .sort((a, b) => heureEffective(a) - heureEffective(b)),
-  ));
-};
+// #retiré (demande utilisateur, "reconstruit entièrement la File d'attente :
+// elle doit contenir les patients ayant un rendez-vous confirmé par
+// l'accueil") : listenFileAttente et listenTousBilletsPeriode (basées sur
+// billets_session/statut) ont été retirées — FileAttentePage.jsx (côté
+// accueil) lit désormais directement rendez_vous + demandes_rendez_vous
+// confirmées (cf. rendezVousService::listenRendezVous,
+// demandesRendezVousService::listenDemandesConfirmees). hospito-medecin
+// garde sa PROPRE copie de listenFileAttente (basée billets/statut 'pret',
+// la notion de "prêt pour consultation" reste pertinente côté médecin).
 
 // #évolué (demande utilisateur, "durée de validité d'un billet configurable
 // par le sysadmin dans les paramètres métiers, 14 jours par défaut") : un
