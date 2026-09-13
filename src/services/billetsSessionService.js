@@ -65,7 +65,16 @@ export const listenBilletsDuJour = (etablissementId, callback) => {
   return () => { annule = true; unsubscribe(); };
 };
 
-export const listenFileAttente = (etablissementId, serviceId, callback) => {
+// #évolué (demande utilisateur, "quand on confirme un rendez-vous ça doit
+// apparaître dans la file d'attente en ordre des rendez-vous, avec des
+// filtres de date aujourd'hui/demain/cette semaine/ce mois/personnalisé") :
+// filtrait auparavant EXCLUSIVEMENT sur "aujourd'hui" (estAujourdhui),
+// aucune autre période consultable. Prend désormais une vraie plage
+// [dateDebut, dateFin] (bornes incluses) — l'appelant (FileAttentePage)
+// construit cette plage selon le filtre choisi ; "Aujourd'hui" reste le
+// comportement par défaut. Toujours filtré/trié CLIENT sur l'heure
+// effective, même requête serveur qu'avant (aucun nouvel index requis).
+export const listenFileAttente = (etablissementId, serviceId, dateDebut, dateFin, callback) => {
   const q = query(
     collection(db, 'billets_session'),
     where('etablissementId', '==', etablissementId),
@@ -75,7 +84,10 @@ export const listenFileAttente = (etablissementId, serviceId, callback) => {
   return onSnapshot(q, (snap) => callback(
     snap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((b) => estAujourdhui(heureEffective(b)))
+      .filter((b) => {
+        const h = heureEffective(b);
+        return h && h >= dateDebut && h <= dateFin;
+      })
       .sort((a, b) => heureEffective(a) - heureEffective(b)),
   ));
 };
