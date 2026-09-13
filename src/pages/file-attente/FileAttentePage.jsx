@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, getDocs } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { Ticket, Clock, Activity } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -7,9 +7,7 @@ import { db } from '../../firebase/config';
 import { listenRendezVous } from '../../services/rendezVousService';
 import { listenDemandesConfirmees } from '../../services/demandesRendezVousService';
 import { buildPatientsQuery } from '../../services/patientsService';
-import {
-  trouverBilletValidePourDate, creerBillet, saisirParametres, listenBilletsParService,
-} from '../../services/billetsSessionService';
+import { creerBillet, saisirParametres, listenBilletsParService } from '../../services/billetsSessionService';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -143,25 +141,41 @@ export default function FileAttentePage() {
     return { billetsParDemandeId: parDemande, billetParPatientLePlusRecent: parPatient };
   }, [billetsService]);
 
+  // #corrigé (retour utilisateur, "5 lignes 'prêt' chez l'accueil pour un
+  // seul patient, mais rien chez le médecin") : confirmerDemande réutilise
+  // TOUJOURS le même billet pour un même patient — confirmer plusieurs
+  // demandes de suite ne crée pas 5 tickets, ça réassigne le MÊME 5 fois de
+  // suite (médecin/heure écrasés à chaque fois). Les colonnes Heure/Médecin
+  // affichaient jusqu'ici l'instantané figé de CHAQUE demande au moment de
+  // sa confirmation — plus forcément la réalité du billet, qui a bougé
+  // depuis. Elles reflètent désormais le billet LUI-MÊME (source de vérité
+  // pour hospito-medecin) quand il est résolu, et les lignes qui partagent
+  // le même billet sont fusionnées en une seule (nbDemandes compte les
+  // demandes redondantes plutôt que de les afficher comme des patients
+  // distincts).
   const rendezVousConfirmes = useMemo(() => {
     if (!monServiceId || rendezVous === null || demandesConfirmees === null || billetsService === null) return null;
     const duGuichet = rendezVous
       .filter((r) => r.serviceId === monServiceId && (r.statut === 'planifie' || r.statut === 'confirme'))
-      .map((r) => ({
-        id: `rdv_${r.id}`,
-        rawId: r.id,
-        patientId: r.patientId,
-        patientNom: r.patientNom,
-        heure: r.dateHeure?.toDate?.() || null,
-        service: r.service,
-        medecinId: null,
-        medecinNom: null,
-        motif: r.motif,
-        statutLabel: LABEL_STATUT_GUICHET[r.statut],
-        statutTone: TONE_STATUT_GUICHET[r.statut],
-        origine: 'guichet',
-        billetStatut: billetParPatientLePlusRecent.get(r.patientId)?.statut || 'aucun',
-      }));
+      .map((r) => {
+        const billet = billetParPatientLePlusRecent.get(r.patientId) || null;
+        return {
+          id: `rdv_${r.id}`,
+          rawId: r.id,
+          billetId: billet?.id || null,
+          patientId: r.patientId,
+          patientNom: r.patientNom,
+          heure: billet?.dateHeure?.toDate?.() || r.dateHeure?.toDate?.() || null,
+          service: r.service,
+          medecinId: billet?.medecinId ?? null,
+          medecinNom: billet?.medecinNom ?? null,
+          motif: r.motif,
+          statutLabel: LABEL_STATUT_GUICHET[r.statut],
+          statutTone: TONE_STATUT_GUICHET[r.statut],
+          origine: 'guichet',
+          billetStatut: billet?.statut || 'aucun',
+        };
+      });
     const enLigne = demandesConfirmees
       .filter((d) => d.serviceId === monServiceId)
       .map((d) => {
@@ -170,12 +184,13 @@ export default function FileAttentePage() {
         return {
           id: `demande_${d.id}`,
           rawId: d.id,
+          billetId: billet?.id || null,
           patientId,
           patientNom: d.patientNom,
-          heure: d.dateHeure?.toDate?.() || null,
+          heure: billet?.dateHeure?.toDate?.() || d.dateHeure?.toDate?.() || null,
           service: d.serviceNom,
-          medecinId: d.medecinId || null,
-          medecinNom: d.medecinNom,
+          medecinId: billet?.medecinId ?? d.medecinId ?? null,
+          medecinNom: billet?.medecinNom ?? d.medecinNom ?? null,
           motif: d.motif,
           statutLabel: 'Confirmé',
           statutTone: 'green',
@@ -183,7 +198,16 @@ export default function FileAttentePage() {
           billetStatut: billet?.statut || 'aucun',
         };
       });
-    return [...duGuichet, ...enLigne]
+
+    const parCle = new Map();
+    [...duGuichet, ...enLigne].forEach((r) => {
+      const cle = r.billetId ? `billet_${r.billetId}` : `ligne_${r.id}`;
+      const existant = parCle.get(cle);
+      if (existant) existant.nbDemandes += 1;
+      else parCle.set(cle, { ...r, nbDemandes: 1 });
+    });
+
+    return [...parCle.values()]
       .filter((r) => r.heure && r.heure >= dateDebut && r.heure <= dateFin)
       .filter((r) => etatFiltre === 'tous' || r.billetStatut === etatFiltre)
       .sort((a, b) => a.heure - b.heure);
@@ -194,12 +218,11 @@ export default function FileAttentePage() {
   // — un popup pour saisir les paramètres et envoyer dans la file d'attente
   // du médecin") : le billet_session est ce qui fait réellement entrer un
   // patient dans la file du MÉDECIN (statut 'pret', cf. saisirParametres).
-  // #corrigé (retour utilisateur, "aucun billet lié à ce rendez-vous en
-  // ligne") : row.patientId est désormais toujours résolu en amont (fiche
-  // patients/{id}, cf. patientIdParUid ci-dessus) pour les DEUX origines —
-  // plus besoin de brancher sur `row.origine` ici, une seule recherche par
-  // demandeId (le plus précis) puis par patient (fiable même si demandeId a
-  // été réécrit par une confirmation plus récente pour le même patient).
+  // #simplifié (row.billetId est désormais déjà résolu dans
+  // rendezVousConfirmes ci-dessus, plus besoin de le rechercher à nouveau
+  // ici) : on relit juste ce document précis pour ses paramètres actuels ;
+  // s'il n'y en a pas encore (aucun billet trouvé pour ce rendez-vous), on
+  // en créera un à l'enregistrement (cf. enregistrerParametres).
   const ouvrirParametres = async (row) => {
     setRdvOuvert(row);
     setParametres(PARAMETRES_VIDE);
@@ -207,16 +230,9 @@ export default function FileAttentePage() {
     setResolutionEnCours(true);
     try {
       let billet = null;
-      if (row.origine !== 'guichet') {
-        const snap = await getDocs(query(
-          collection(db, 'billets_session'),
-          where('etablissementId', '==', etablissementId),
-          where('demandeId', '==', row.rawId),
-        ));
-        billet = snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
-      }
-      if (!billet && row.patientId && row.heure) {
-        billet = await trouverBilletValidePourDate(row.patientId, etablissementId, row.heure, monServiceId);
+      if (row.billetId) {
+        const snap = await getDoc(doc(db, 'billets_session', row.billetId));
+        billet = snap.exists() ? { id: snap.id, ...snap.data() } : null;
       }
       setBilletResolu(billet);
       if (billet?.parametres) setParametres(billet.parametres);
@@ -333,7 +349,14 @@ export default function FileAttentePage() {
                       </span>
                     ) : '—'}
                   </td>
-                  <td className="px-3 py-2 font-medium text-foreground">{r.patientNom}</td>
+                  <td className="px-3 py-2 font-medium text-foreground">
+                    {r.patientNom}
+                    {r.nbDemandes > 1 && (
+                      <span className="ml-1.5 text-xs font-normal text-muted-foreground" title="Plusieurs demandes confirmées pour ce même rendez-vous — un seul billet, réutilisé à chaque confirmation.">
+                        (×{r.nbDemandes})
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-muted-foreground">{r.service || '—'}</td>
                   <td className="px-3 py-2 text-muted-foreground">{r.medecinNom ? `Dr ${r.medecinNom}` : '—'}</td>
                   <td className="px-3 py-2 text-muted-foreground">{r.motif || '—'}</td>
