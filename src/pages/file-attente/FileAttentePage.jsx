@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Ticket, Clock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { listenFileAttente } from '../../services/billetsSessionService';
+import { listenFileAttente, listenTousBilletsPeriode } from '../../services/billetsSessionService';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import EmptyState from '../../components/common/EmptyState';
 import Loader from '../../components/common/Loader';
+import StatusBadge from '../../components/common/StatusBadge';
+
+const LABEL_STATUT = { a_payer: 'À payer', arrive: 'En attente des paramètres', pret: 'Prêt pour consultation', consulte: 'Consulté' };
+const TONE_STATUT = { a_payer: 'amber', arrive: 'blue', pret: 'green', consulte: 'gray' };
 
 const debutJour = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 const finJour = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; };
@@ -46,6 +50,7 @@ const versInput = (d) => d.toISOString().slice(0, 10);
 export default function FileAttentePage() {
   const { userProfile, etablissementId } = useAuth();
   const [billets, setBillets] = useState(null);
+  const [tousBillets, setTousBillets] = useState(null);
   const [periode, setPeriode] = useState('aujourdhui');
   const [personnaliseDebut, setPersonnaliseDebut] = useState(versInput(new Date()));
   const [personnaliseFin, setPersonnaliseFin] = useState(versInput(new Date()));
@@ -59,6 +64,11 @@ export default function FileAttentePage() {
   useEffect(() => {
     if (!userProfile?.serviceId) return;
     return listenFileAttente(etablissementId, userProfile.serviceId, dateDebut, dateFin, setBillets);
+  }, [etablissementId, userProfile?.serviceId, dateDebut, dateFin]);
+
+  useEffect(() => {
+    if (!userProfile?.serviceId) return;
+    return listenTousBilletsPeriode(etablissementId, userProfile.serviceId, dateDebut, dateFin, setTousBillets);
   }, [etablissementId, userProfile?.serviceId, dateDebut, dateFin]);
 
   if (!userProfile?.serviceId) {
@@ -127,6 +137,40 @@ export default function FileAttentePage() {
           })}
         </div>
       )}
+
+      <div className="space-y-3">
+        <div>
+          <h2 className="font-display text-lg font-semibold text-foreground">Tous les rendez-vous — {LABEL_PERIODE[periode]}</h2>
+          <p className="text-sm text-muted-foreground">
+            Tous les billets de ce service pour la période choisie, quel que soit leur statut — y compris ceux pas encore prêts pour la file d'attente.
+          </p>
+        </div>
+        {tousBillets === null ? (
+          <Loader label="Chargement…" />
+        ) : !tousBillets.length ? (
+          <EmptyState title="Aucun rendez-vous" description="Aucun billet enregistré pour ce service sur la période choisie." />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {tousBillets.map((b) => {
+              const heure = (b.dateHeure?.toDate?.() || b.createdAt?.toDate?.());
+              return (
+                <div key={b.id} className="glass-card-elevated p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-foreground">{b.patientNom}</span>
+                    <StatusBadge label={LABEL_STATUT[b.statut]} tone={TONE_STATUT[b.statut]} />
+                  </div>
+                  {heure && (
+                    <span className="flex items-center gap-1 text-xs font-medium text-primary">
+                      <Clock size={12} /> {heure.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {heure.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                  <p className="text-sm text-muted-foreground">{b.medecinNom ? `Dr ${b.medecinNom}` : 'Aucun médecin assigné'}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
