@@ -1,8 +1,21 @@
 import {
-  collection, doc, addDoc, updateDoc, query, where, orderBy, getDocs, serverTimestamp, arrayUnion,
+  collection, doc, getDoc, addDoc, updateDoc, query, where, orderBy, getDocs, serverTimestamp, arrayUnion,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { logAction } from './auditService';
+import { creerNotification } from './notificationsService';
+
+// #nouveau (demande utilisateur, "toutes les notifications soient
+// fonctionnelles pour toutes les opérations") : admissions/sorties/
+// transferts ne notifiaient jamais le patient, alors qu'un compte lié
+// (patientUid) existe déjà sur la fiche pour la plupart des flux de ce
+// projet — best-effort, jamais bloquant si la fiche n'a pas de compte lié.
+const notifierPatientAdmission = async (patientId, { type, titre, message }) => {
+  try {
+    const patientUid = (await getDoc(doc(db, 'patients', patientId))).data()?.patientUid;
+    if (patientUid) await creerNotification({ userId: patientUid, type, titre, message, link: '/mon-compte/dossier' });
+  } catch { /* best-effort */ }
+};
 
 // #corrigé (audit, "creerAdmission écrit statut:'pre_admission' et un champ
 // `service` texte libre, jamais serviceId/serviceNom — la vraie règle
@@ -39,23 +52,28 @@ export const admettre = async ({ patientId, patientNom, serviceId, serviceNom, m
     createdAt: serverTimestamp(),
   });
   await logAction({ actor, etablissementId, action: 'admission.creer', targetType: 'admission', targetId: ref.id, details: { serviceNom, motif } });
+  notifierPatientAdmission(patientId, { type: 'admission', titre: 'Admission enregistrée', message: `Vous avez été admis en ${serviceNom}.` });
   return ref.id;
 };
 
 export const sortir = async (admissionId, compteRenduSortie, etablissementId, actor) => {
+  const admission = (await getDoc(doc(db, 'admissions', admissionId))).data();
   await updateDoc(doc(db, 'admissions', admissionId), {
     statut: 'sorti', sortieAt: serverTimestamp(), sortiePar: actor.uid,
     compteRenduSortie: compteRenduSortie?.trim() || null,
   });
   await logAction({ actor, etablissementId, action: 'admission.changer_statut', targetType: 'admission', targetId: admissionId, details: { statut: 'sorti' } });
+  if (admission?.patientId) notifierPatientAdmission(admission.patientId, { type: 'admission', titre: 'Sortie enregistrée', message: 'Votre sortie a été enregistrée.' });
 };
 
 export const transferer = async (admissionId, { serviceId, serviceNom }, etablissementId, actor) => {
+  const admission = (await getDoc(doc(db, 'admissions', admissionId))).data();
   await updateDoc(doc(db, 'admissions', admissionId), {
     serviceId, serviceNom,
     transferts: arrayUnion({ serviceId, serviceNom, at: new Date(), par: actor.uid }),
   });
   await logAction({ actor, etablissementId, action: 'admission.transferer', targetType: 'admission', targetId: admissionId, details: { serviceNom } });
+  if (admission?.patientId) notifierPatientAdmission(admission.patientId, { type: 'admission', titre: 'Transfert de service', message: `Vous avez été transféré vers ${serviceNom}.` });
 };
 
 // Patients actuellement hospitalisés — pour le sélecteur "Visites" (une

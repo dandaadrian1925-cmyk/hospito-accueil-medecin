@@ -1,10 +1,11 @@
 import {
-  collection, doc, updateDoc, query, where, orderBy, onSnapshot, getDocs, documentId, Timestamp,
+  collection, doc, getDoc, updateDoc, query, where, orderBy, onSnapshot, getDocs, documentId, Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { logAction } from './auditService';
 import { trouverFicheParPatientUid } from './patientsService';
 import { trouverBilletValidePourDate } from './billetsSessionService';
+import { creerNotification } from './notificationsService';
 
 // Demandes de RDV soumises depuis l'app patient (hospito-patient) — distinctes
 // des rendez_vous pris directement au guichet (rendezVousService.js), car
@@ -102,10 +103,32 @@ export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateH
     dateHeure: Timestamp.fromDate(new Date(dateHeure)),
   });
   await logAction({ actor, etablissementId, action: 'demande_rdv.confirmer', targetType: 'demande_rendez_vous', targetId: demandeId, details: { medecinId, billetId } });
+  // #nouveau (demande utilisateur, "toutes les notifications soient
+  // fonctionnelles pour toutes les opérations") : la confirmation d'un
+  // rendez-vous par l'accueil ne prévenait jamais le patient — il ne le
+  // découvrait qu'en rouvrant "Mes rendez-vous". Un proche géré par un
+  // tuteur (patientFicheId, jamais patientUid) n'a pas de compte propre à
+  // notifier — jamais bloquant dans ce cas.
+  if (patientUid) {
+    creerNotification({
+      userId: patientUid, type: 'rendezvous', titre: 'Rendez-vous confirmé',
+      message: `Votre rendez-vous du ${new Date(dateHeure).toLocaleString('fr-FR')} a été confirmé.`,
+      link: '/mon-compte/rendez-vous',
+    });
+  }
 };
 
 export const refuserDemande = async (demandeId, etablissementId, actor) => {
+  const snap = await getDoc(doc(db, 'demandes_rendez_vous', demandeId));
+  const patientUid = snap.data()?.patientUid;
   await updateDoc(doc(db, 'demandes_rendez_vous', demandeId), { statut: 'refuse' });
+  if (patientUid) {
+    creerNotification({
+      userId: patientUid, type: 'rendezvous', titre: 'Rendez-vous refusé',
+      message: "Votre demande de rendez-vous n'a pas pu être confirmée. Contactez l'établissement pour plus de détails.",
+      link: '/mon-compte/rendez-vous',
+    });
+  }
   await logAction({ actor, etablissementId, action: 'demande_rdv.refuser', targetType: 'demande_rendez_vous', targetId: demandeId });
 };
 
