@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Ticket, Clock } from 'lucide-react';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import toast from 'react-hot-toast';
+import { Ticket, Clock, Activity } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { db } from '../../firebase/config';
 import { listenRendezVous } from '../../services/rendezVousService';
 import { listenDemandesConfirmees } from '../../services/demandesRendezVousService';
+import { trouverBilletValidePourDate, creerBillet, saisirParametres } from '../../services/billetsSessionService';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import EmptyState from '../../components/common/EmptyState';
 import Loader from '../../components/common/Loader';
 import StatusBadge from '../../components/common/StatusBadge';
+
+const PARAMETRES_VIDE = { temperature: '', tension: '', poids: '', pouls: '' };
 
 const debutJour = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 const finJour = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; };
@@ -52,10 +58,16 @@ const TONE_ORIGINE = { guichet: 'gray', en_ligne: 'blue', teleconsultation: 'blu
 // fonctionnels, appliqués côté client sur l'heure du rendez-vous — même
 // principe qu'avant, aucun nouvel index Firestore requis.
 export default function FileAttentePage() {
-  const { userProfile, etablissementId } = useAuth();
+  const { user, userProfile, etablissementId } = useAuth();
+  const actor = { uid: user.uid, email: user.email };
   const [rendezVous, setRendezVous] = useState(null);
   const [demandesConfirmees, setDemandesConfirmees] = useState(null);
   const [periode, setPeriode] = useState('aujourdhui');
+  const [rdvOuvert, setRdvOuvert] = useState(null);
+  const [billetResolu, setBilletResolu] = useState(null);
+  const [resolutionEnCours, setResolutionEnCours] = useState(false);
+  const [parametres, setParametres] = useState(PARAMETRES_VIDE);
+  const [saving, setSaving] = useState(false);
   const [personnaliseDebut, setPersonnaliseDebut] = useState(versInput(new Date()));
   const [personnaliseFin, setPersonnaliseFin] = useState(versInput(new Date()));
 
@@ -76,9 +88,12 @@ export default function FileAttentePage() {
       .filter((r) => r.serviceId === monServiceId && (r.statut === 'planifie' || r.statut === 'confirme'))
       .map((r) => ({
         id: `rdv_${r.id}`,
+        rawId: r.id,
+        patientId: r.patientId,
         patientNom: r.patientNom,
         heure: r.dateHeure?.toDate?.() || null,
         service: r.service,
+        medecinId: null,
         medecinNom: null,
         motif: r.motif,
         statutLabel: LABEL_STATUT_GUICHET[r.statut],
@@ -89,9 +104,12 @@ export default function FileAttentePage() {
       .filter((d) => d.serviceId === monServiceId)
       .map((d) => ({
         id: `demande_${d.id}`,
+        rawId: d.id,
+        patientId: null,
         patientNom: d.patientNom,
         heure: d.dateHeure?.toDate?.() || null,
         service: d.serviceNom,
+        medecinId: d.medecinId || null,
         medecinNom: d.medecinNom,
         motif: d.motif,
         statutLabel: 'Confirmé',
@@ -102,6 +120,64 @@ export default function FileAttentePage() {
       .filter((r) => r.heure && r.heure >= dateDebut && r.heure <= dateFin)
       .sort((a, b) => a.heure - b.heure);
   }, [rendezVous, demandesConfirmees, monServiceId, dateDebut, dateFin]);
+
+  // #nouveau (demande utilisateur, "quand les patients se présentent à
+  // l'accueil pour honorer le rendez-vous, on doit prendre leurs paramètres
+  // — un popup pour saisir les paramètres et envoyer dans la file d'attente
+  // du médecin") : le billet_session est ce qui fait réellement entrer un
+  // patient dans la file du MÉDECIN (statut 'pret', cf. saisirParametres) —
+  // on retrouve celui déjà lié à ce rendez-vous (une demande en ligne
+  // confirmée en a TOUJOURS un, cf. confirmerDemande ; un RDV guichet peut
+  // ne pas en avoir si le patient n'était jamais passé avant), et on le crée
+  // à la volée sinon.
+  const ouvrirParametres = async (row) => {
+    setRdvOuvert(row);
+    setParametres(PARAMETRES_VIDE);
+    setBilletResolu(null);
+    setResolutionEnCours(true);
+    try {
+      let billet = null;
+      if (row.origine === 'guichet') {
+        billet = row.heure ? await trouverBilletValidePourDate(row.patientId, etablissementId, row.heure, monServiceId) : null;
+      } else {
+        const snap = await getDocs(query(
+          collection(db, 'billets_session'),
+          where('etablissementId', '==', etablissementId),
+          where('demandeId', '==', row.rawId),
+        ));
+        billet = snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+      }
+      setBilletResolu(billet);
+      if (billet?.parametres) setParametres(billet.parametres);
+    } catch {
+      setBilletResolu(null);
+    } finally {
+      setResolutionEnCours(false);
+    }
+  };
+
+  const enregistrerParametres = async () => {
+    setSaving(true);
+    try {
+      let billetId = billetResolu?.id;
+      if (!billetId) {
+        if (!rdvOuvert.patientId) throw new Error('Aucun billet de consultation lié à ce rendez-vous en ligne — problème à signaler.');
+        const { billetId: nouveauId } = await creerBillet({
+          patientId: rdvOuvert.patientId, patientNom: rdvOuvert.patientNom,
+          serviceId: monServiceId, serviceNom: rdvOuvert.service,
+          medecinId: rdvOuvert.medecinId, medecinNom: rdvOuvert.medecinNom,
+        }, etablissementId, actor);
+        billetId = nouveauId;
+      }
+      await saisirParametres(billetId, parametres, etablissementId, actor);
+      toast.success('Paramètres enregistrés — patient envoyé dans la file d\'attente du médecin');
+      setRdvOuvert(null);
+    } catch (e) {
+      toast.error(e.message || 'Erreur');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (!userProfile?.serviceId) {
     return (
@@ -165,7 +241,11 @@ export default function FileAttentePage() {
             </thead>
             <tbody>
               {rendezVousConfirmes.map((r) => (
-                <tr key={r.id} className="border-b border-border/50 last:border-0">
+                <tr
+                  key={r.id}
+                  onClick={() => ouvrirParametres(r)}
+                  className="border-b border-border/50 last:border-0 cursor-pointer hover:bg-secondary/40"
+                >
                   <td className="px-3 py-2 whitespace-nowrap">
                     {r.heure ? (
                       <span className="flex items-center gap-1 font-medium text-primary">
@@ -183,6 +263,51 @@ export default function FileAttentePage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {rdvOuvert && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !saving && setRdvOuvert(null)}>
+          <div className="bg-background rounded-xl p-5 max-w-sm w-full space-y-3" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display font-bold text-foreground flex items-center gap-2">
+              <Activity size={18} className="text-primary" /> Paramètres — {rdvOuvert.patientNom}
+            </h3>
+            {resolutionEnCours ? (
+              <Loader label="Recherche du billet de consultation…" />
+            ) : (
+              <>
+                {!billetResolu && (
+                  <p className="text-xs text-amber-600">
+                    Aucun billet de consultation existant pour ce rendez-vous — un nouveau sera créé à l'enregistrement.
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Température (°C)</Label>
+                    <Input value={parametres.temperature} onChange={(e) => setParametres({ ...parametres, temperature: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Tension</Label>
+                    <Input value={parametres.tension} onChange={(e) => setParametres({ ...parametres, tension: e.target.value })} placeholder="120/80" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Poids (kg)</Label>
+                    <Input value={parametres.poids} onChange={(e) => setParametres({ ...parametres, poids: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Pouls (bpm)</Label>
+                    <Input value={parametres.pouls} onChange={(e) => setParametres({ ...parametres, pouls: e.target.value })} />
+                  </div>
+                </div>
+              </>
+            )}
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" onClick={() => setRdvOuvert(null)} disabled={saving}>Annuler</Button>
+              <Button onClick={enregistrerParametres} disabled={saving || resolutionEnCours}>
+                {saving ? 'Enregistrement…' : 'Enregistrer et envoyer au médecin'}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
