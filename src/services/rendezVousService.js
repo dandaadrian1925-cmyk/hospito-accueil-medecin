@@ -33,7 +33,7 @@ export const creerRendezVous = async ({ patientId, patientNom, serviceId, servic
   // qu'il entre dans la file — sinon le RDV reste créé tel quel (certains
   // services ne facturent pas de billet, ce n'est pas bloquant ici).
   try {
-    const billet = await trouverBilletValidePourDate(patientId, etablissementId, dateHeure);
+    const billet = await trouverBilletValidePourDate(patientId, etablissementId, dateHeure, serviceId);
     if (billet) {
       const dejaPayeOuVu = billet.statut !== 'a_payer';
       await updateDoc(doc(db, 'billets_session', billet.id), {

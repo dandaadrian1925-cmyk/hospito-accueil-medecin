@@ -121,7 +121,20 @@ export const trouverBilletActifDuJour = async (patientId, etablissementId) => {
 // 'consulte' n'invalide PAS le billet ici : "déjà vu" ne veut pas dire "n'a
 // jamais eu de billet", seule la fenêtre de date compte pour cette
 // vérification précise.
-export const trouverBilletValidePourDate = async (patientId, etablissementId, dateCible) => {
+// #corrigé (retour utilisateur, "j'ai confirmé un RDV à l'accueil mais il
+// n'apparaît toujours pas dans la file d'attente") : un billet est
+// intrinsèquement lié à UN service (tarif par service à sa création,
+// listenFileAttente filtré par serviceId) — mais cette recherche ignorait
+// totalement le service, sur TOUT l'établissement. Un patient avec un
+// billet valide dans un AUTRE service (même ancien, même déjà consulté)
+// pouvait donc être choisi de préférence au vrai billet 'pret' de CE
+// service (cf. tri ci-dessous, qui évite justement de reprendre un billet
+// 'pret') : confirmerDemande le faisait alors passer à 'pret' avec la
+// bonne date... mais le mauvais serviceId, invisible dans la file
+// d'attente du service concerné. `serviceId` (optionnel, pour ne pas
+// casser un appel existant qui ne le fournirait pas) restreint désormais
+// les candidats à CE service quand il est connu.
+export const trouverBilletValidePourDate = async (patientId, etablissementId, dateCible, serviceId = null) => {
   const { dureeValiditeBilletJours } = await getSettings(etablissementId);
   const snap = await getDocs(query(
     collection(db, 'billets_session'),
@@ -132,6 +145,7 @@ export const trouverBilletValidePourDate = async (patientId, etablissementId, da
   const candidats = snap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
     .filter((b) => {
+      if (serviceId && b.serviceId !== serviceId) return false;
       const creeMs = b.createdAt?.toDate?.()?.getTime();
       if (!creeMs) return false;
       const expireMs = creeMs + dureeValiditeBilletJours * 24 * 3600 * 1000;

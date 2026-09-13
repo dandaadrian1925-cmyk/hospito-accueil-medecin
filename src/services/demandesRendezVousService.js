@@ -32,7 +32,7 @@ export const listenDemandesEnAttente = (etablissementId, callback) => {
 // de consultation valide à la date choisie, impérativement") : l'exemption
 // initiale de la téléconsultation est retirée — même exigence, aucune
 // différence de traitement selon le type de RDV.
-export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateHeure, patientUid, patientFicheId }, etablissementId, actor) => {
+export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateHeure, patientUid, patientFicheId, serviceId }, etablissementId, actor) => {
   if (!dateHeure) throw new Error('DATE_REQUISE');
   // #nouveau (demande utilisateur, "la confirmation par l'accueil échoue
   // avec message d'erreur lorsque l'heure de rendez-vous est déjà passée si
@@ -47,7 +47,7 @@ export const confirmerDemande = async (demandeId, { medecinId, medecinNom, dateH
     ? { id: patientFicheId }
     : (patientUid ? await trouverFicheParPatientUid(patientUid, etablissementId) : null);
   if (!fiche) throw new Error('AUCUNE_FICHE_PATIENT');
-  const billet = await trouverBilletValidePourDate(fiche.id, etablissementId, dateHeure);
+  const billet = await trouverBilletValidePourDate(fiche.id, etablissementId, dateHeure, serviceId);
   if (!billet) throw new Error('AUCUN_BILLET_VALIDE');
   const billetId = billet.id;
   // #nouveau (demande utilisateur, "lorsqu'un rendez-vous est confirmé, il
